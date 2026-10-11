@@ -4,10 +4,10 @@
 #   Ubuntu: Debian calls libedit's .so.0 ABI .so.2 (replace-needed), and liblldb
 #   needs narrow ncurses with versioned symbols (NCURSES6_*), which nixpkgs only
 #   builds wide; a narrow, versioned build is made here, as Debian does.
-# - Host (Linux) builds get a sysroot with glibc, GCC's start files and Swift's
-#   own runtime, and clang config files that use it for the host target only
-#   (Darwin targets use the iOS/macOS SDK). Set SDKROOT=$out/sysroot to build
-#   Linux Swift code outside the apple-dev environment.
+# - Host (Linux) builds: $out/sysroot has glibc, GCC's start files and Swift's
+#   own runtime (set SDKROOT=$out/sysroot outside apple-dev; inside, / is the
+#   sysroot). Clang config files for the host triple only set the linker and
+#   Nix's dynamic linker (Darwin targets use the iOS/macOS SDK).
 # - patches/swift-strings-encoding-defaults.patch: SwiftBuild cannot re-encode
 #   .strings files outside Darwin, so the encodings must be named (upstream
 #   install-toolchain.sh edits a writable toolchain instead).
@@ -91,10 +91,11 @@ stdenv.mkDerivation {
     echo 'GROUP ( libm.so.6 AS_NEEDED ( libmvec.so.1 ) )' > $sr/usr/lib/libm.so
 
     # clang reads <triple>-<driver>.cfg only for that target triple: Linux
-    # links use the sysroot, the toolchain's own lld, and Nix's dynamic linker.
+    # links use the toolchain's own lld and Nix's dynamic linker. No --sysroot
+    # here: Swift passes its SDK to clang (SDKROOT outside apple-dev, / inside),
+    # and the two must agree for the Glibc module.
     for driver in clang clang++; do
       cat > $out/usr/bin/${triple}-$driver.cfg <<CFG
-    --sysroot=$sr
     --ld-path=$out/usr/bin/ld.lld
     -Wl,-dynamic-linker,${glibc}/lib/ld-linux-x86-64.so.2
     -Wl,-rpath,${glibc}/lib

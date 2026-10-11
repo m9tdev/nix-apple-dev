@@ -25,3 +25,8 @@ jobs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           nix run .#apple-dev -- swift --version
           nix run .#apple-dev -- bash -c 'xtool --help | head -1; pymobiledevice3 version; command -v device-run.sh'
+          # a package whose manifest imports Foundation (needs Glibc in /usr/include)
+          mkdir -p /tmp/hi/Sources/hi && cd /tmp/hi
+          printf 'import Foundation\nprint(Date() > .distantPast)\n' > Sources/hi/main.swift
+          printf '// swift-tools-version:6.0\nimport PackageDescription\nimport Foundation\nlet package = Package(name: "hi", targets: [.executableTarget(name: "hi")])\n' > Package.swift
+          nix run $GITHUB_WORKSPACE#apple-dev -- swift run | tail -1 | grep -qx true

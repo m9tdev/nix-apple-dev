@@ -33,6 +33,10 @@ buildFHSEnv {
     pkgs:
     with pkgs;
     [
+      # / is the sysroot for host (Linux) Swift: package manifests, `swift run`
+      glibc
+      gcc.cc # crtbeginS.o, libgcc
+      gcc.cc.lib
       coreutils
       findutils
       gnused
