@@ -1,0 +1,35 @@
+--- a/device-run.sh
++++ b/device-run.sh
+@@ -60,8 +60,8 @@
+ PATH="$(dirname "$(readlink -f "$(command -v swift)")"):$PATH"
+ export PATH
+ 
+-XT="$HOME/.local/bin/xtool"
+-PMD3="$HOME/pymobile3-venv/bin/pymobiledevice3"
++XT=$(command -v xtool)
++PMD3=$(command -v pymobiledevice3)
+ 
+ MODE=usb; UDID=; RSD_HOST=; RSD_PORT=; PKG=; LLDB=0; SUDO=0; ATTACH=0; TAILNET_HOST=
+ while [ $# -gt 0 ]; do
+@@ -188,10 +188,10 @@
+     echo "Copying the shared cache from the iPhone (once per iOS build, a few GB)"
+     "$PMD3" developer fetch-symbols download "$sym/dsc" "${rsd[@]}"
+     dsc=$(find "$sym/dsc" -name dyld_shared_cache_arm64e | head -n1)
+-    "$HOME/.local/bin/ipsw" dyld info "$dsc" --dylibs 2>/dev/null | grep -o '/[^ ]*$' |
++    ipsw dyld info "$dsc" --dylibs 2>/dev/null | grep -o '/[^ ]*$' |
+       grep -E '^/usr/lib/(swift/|libobjc)' | while read -r p; do
+         mkdir -p "$sym/Symbols$(dirname "$p")"
+-        "$HOME/.local/bin/ipsw" dyld extract "$dsc" "$(basename "$p")" --slide -o "$sym/Symbols$(dirname "$p")" >/dev/null
++        ipsw dyld extract "$dsc" "$(basename "$p")" --slide -o "$sym/Symbols$(dirname "$p")" >/dev/null
+       done
+   fi
+   # Stop the running app (needs the DDI), then install over it. --attach leaves it alone.
+--- a/flutter/build.sh
++++ b/flutter/build.sh
+@@ -112,5 +112,5 @@
+ echo "Built $out/Runner.ipa ($BUNDLE_ID $BUILD_NAME+$BUILD_NUMBER, iOS $MIN_IOS+)"
+ 
+ if [ -n "$install" ]; then
+-  "${XTOOL:-$HOME/.local/bin/xtool}" install --usb "$out/Runner.ipa"
++  "${XTOOL:-xtool}" install --usb "$out/Runner.ipa"
+ fi

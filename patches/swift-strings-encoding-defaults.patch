@@ -1,0 +1,45 @@
+diff -ru a/usr/share/pm/SwiftBuild_SWBCore.bundle/CoreBuildSystem.xcspec b/usr/share/pm/SwiftBuild_SWBCore.bundle/CoreBuildSystem.xcspec
+--- a/usr/share/pm/SwiftBuild_SWBCore.bundle/CoreBuildSystem.xcspec	2026-09-14 00:17:55.000000000 +0000
++++ b/usr/share/pm/SwiftBuild_SWBCore.bundle/CoreBuildSystem.xcspec	2026-10-11 11:11:13.342284811 +0000
+@@ -627,7 +627,7 @@
+             {
+                 Name = "STRINGS_FILE_OUTPUT_ENCODING";
+                 Type = Enumeration;
+-                DefaultValue = "UTF-16";
++                DefaultValue = "binary";
+                 Values = (
+                     "UTF-16",
+                     "UTF-8",
+@@ -2623,7 +2623,7 @@
+                     "UTF-8",
+                     binary,
+                 );
+-                DefaultValue = "UTF-16";
++                DefaultValue = "binary";
+             },
+             {
+                 Name = "STRINGS_FILE_INFOPLIST_RENAME";
+diff -ru a/usr/share/pm/SwiftBuild_SWBCore.bundle/NativeBuildSystem.xcspec b/usr/share/pm/SwiftBuild_SWBCore.bundle/NativeBuildSystem.xcspec
+--- a/usr/share/pm/SwiftBuild_SWBCore.bundle/NativeBuildSystem.xcspec	2026-09-14 00:17:55.000000000 +0000
++++ b/usr/share/pm/SwiftBuild_SWBCore.bundle/NativeBuildSystem.xcspec	2026-10-11 11:11:13.342284811 +0000
+@@ -432,7 +432,7 @@
+                 Category = Packaging;
+                 ConditionFlavors = ( "sdk" );
+                 Values = ("UTF-16", "UTF-8", "binary");
+-                DefaultValue = "UTF-16";
++                DefaultValue = "binary";
+             },
+             {   Name = STRINGS_FILE_INFOPLIST_RENAME;
+                 Type = Boolean;
+diff -ru a/usr/share/pm/SwiftBuild_SWBUniversalPlatform.bundle/CopyStringsFile.xcspec b/usr/share/pm/SwiftBuild_SWBUniversalPlatform.bundle/CopyStringsFile.xcspec
+--- a/usr/share/pm/SwiftBuild_SWBUniversalPlatform.bundle/CopyStringsFile.xcspec	2026-09-14 00:17:55.000000000 +0000
++++ b/usr/share/pm/SwiftBuild_SWBUniversalPlatform.bundle/CopyStringsFile.xcspec	2026-10-11 11:11:13.340284784 +0000
+@@ -37,7 +37,7 @@
+             },
+             {   Name = STRINGS_FILE_INPUT_ENCODING;
+                 Type = String;
+-                DefaultValue = "$(InputFileTextEncoding)";
++                DefaultValue = "utf-8";
+                 CommandLineFlag = "--inputencoding";
+             },
+             {   Name = STRINGS_FILE_OUTPUT_ENCODING;

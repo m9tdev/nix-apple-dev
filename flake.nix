@@ -52,22 +52,17 @@
           buildShell = mkFHSEnv { name = "apple-dev-build"; };
           mkSwiftPM = pkgs.callPackage ./pkgs/swiftpm.nix { };
           tools = import ./pkgs/tools.nix {
-            inherit (pkgs) lib fetchFromGitHub python3;
+            inherit (pkgs) lib fetchFromGitHub;
             inherit mkSwiftPM buildShell upstream;
           };
           ipsw = pkgs.callPackage ./pkgs/ipsw.nix { };
           python-env = pkgs.callPackage ./pkgs/python.nix {
             inherit pyproject-nix uv2nix pyproject-build-systems;
           };
-          upstream-patched = pkgs.callPackage ./pkgs/upstream.nix {
-            src = upstream;
-            inherit (tools) xtool open-apple-macros actool;
-            inherit ipsw python-env;
-            inherit (pkgs) rcodesign;
-          };
+          upstream-patched = pkgs.callPackage ./pkgs/upstream.nix { src = upstream; };
           ios-sdk = pkgs.callPackage ./pkgs/ios-sdk.nix {
             inherit buildShell;
-            inherit (tools) xtool open-apple-macros;
+            inherit (tools) xtool open-apple-macros actool;
             upstream = upstream-patched;
           };
           apple-dev = pkgs.callPackage ./pkgs/fhs.nix {
@@ -98,5 +93,6 @@
         });
 
       nixosModules.default = import ./modules/nixos.nix self;
+      homeManagerModules.default = import ./modules/home-manager.nix self;
     };
 }

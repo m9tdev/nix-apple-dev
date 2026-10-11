@@ -5,11 +5,10 @@
 # xtool unpacks it in the build directory and keeps only the parts its SDK
 # builder needs (`SDKBuilder.wanted`); Xcode.app is never stored.
 # Then the same steps as upstream's installer: xtool sdk build + install, and
-# install_darwin_tools / install_oam (actool, ibtool, momc, the macro server,
-# the plist/JSON defaults), taken from the patched upstream script so they
-# cannot drift. Output: the registered bundle, ready to link into
-# ~/.swiftpm/swift-sdks/darwin.artifactbundle.
-{ lib, stdenvNoCC, requireFile, fetchurl, xar, pbzx, cpio, buildShell, xtool, open-apple-macros, upstream }:
+# sdk-finish.py (upstream's install_darwin_tools / install_oam: actool,
+# ibtool, momc, the macro server, the plist/JSON defaults). Output: the
+# registered bundle, ready to link into ~/.swiftpm/swift-sdks/.
+{ lib, stdenvNoCC, requireFile, fetchurl, xar, pbzx, cpio, python3, buildShell, xtool, open-apple-macros, actool, upstream }:
 
 let
   xcodeVersion = "27.0";
@@ -52,7 +51,7 @@ stdenvNoCC.mkDerivation {
   src = xip;
   dontUnpack = true;
 
-  nativeBuildInputs = [ xar pbzx cpio ];
+  nativeBuildInputs = [ xar pbzx cpio python3 ];
 
   # No network in the sandbox: xtool (patched, see patch-xtool.py) reads these.
   XTOOL_TOOLSET_TARBALL = toolset;
@@ -78,16 +77,8 @@ stdenvNoCC.mkDerivation {
 
     bundle=$HOME/.swiftpm/swift-sdks/darwin.artifactbundle
     test -f "$bundle/info.json"
-    # upstream's install_darwin_tools and install_oam, from the patched script
-    sed -n '/^OAM_SHA=/p; /^install_oam() {/,/^}/p; /^install_darwin_tools() {/,/^}/p' \
-      ${upstream}/install-toolchain.sh > functions.sh
-    grep -q '^install_oam()' functions.sh && grep -q '^install_darwin_tools()' functions.sh
-    ${run} bash -euo pipefail -c '
-      DARWIN_SDK_BUNDLE=$1 REPO_DIR=$2
-      . ./functions.sh
-      install_darwin_tools
-      install_oam
-    ' _ "$bundle" ${upstream}
+    python3 ${./sdk-finish.py} "$bundle" ${actool}/bin/actool ${upstream}/tools \
+      ${open-apple-macros}/bin/OpenAppleMacrosServer
     runHook postBuild
   '';
 

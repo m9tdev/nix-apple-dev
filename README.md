@@ -24,7 +24,17 @@ The SDK is unfree (Apple's files): never push it to a public binary cache.
 
 ## Install
 
-Choose one of these two ways.
+Choose one of these ways. The NixOS and home-manager modules can be used together.
+
+### home-manager module (per user, includes the SDK links)
+
+```nix
+# home-manager imports
+nix-apple-dev.homeManagerModules.default
+
+programs.apple-dev.enable = true;
+programs.apple-dev.sdk.enable = true;  # first: nix-store --add-fixed sha256 Xcode_27.xip
+```
 
 ### NixOS module
 
@@ -90,6 +100,7 @@ set -a; . ~/.appstoreconnect/env; set +a
 xtool new Hello && cd Hello && xtool dev build
 provision-dev.py --bundle-id com.example.hello --udid <UDID>
 sign-dev.sh xtool/Hello.app Hello-dev.ipa
+pymobiledevice3 developer dvt pkill --bundle com.example.hello   # a running copy blocks the reinstall
 pymobiledevice3 apps install Hello-dev.ipa
 pymobiledevice3 developer dvt launch com.example.hello
 ```
@@ -100,12 +111,14 @@ With a free Apple ID: run `xtool auth`, then `xtool dev run` in the project dire
 
 - `apple-dev` with no arguments opens a shell. `apple-dev CMD ...` runs one command.
   The Swift-built tools (xtool, the toolchain) run only inside it.
+- Patches are in `patches/`. Upstream's scripts call the tools from `PATH`, and
+  `install-toolchain.sh` is replaced: Nix builds everything it installs.
 - `pkgs/compat-libs.nix` supplies the library names that the swift.org toolchain
   expects: narrow versioned ncurses, `libedit.so.2` and `libxml2.so.2`.
-- Upstream patches a writable toolchain for SwiftBuild. Here that patch is
-  applied at build time (`pkgs/patch-xcspec.py`).
-- `pkgs/patch-xtool.py` lets `xtool sdk build` run offline (the toolset and the
-  macro server come from Nix). Xcode.xip stores many files in Apple's
+- Upstream edits a writable toolchain for SwiftBuild. Here that edit is
+  `patches/swift-strings-encoding-defaults.patch`.
+- `patches/xtool-offline-sdk-build.patch` lets `xtool sdk build` run offline (the
+  toolset and the macro server come from Nix). Xcode.xip stores many files in Apple's
   compressed form (decmpfs), so the SDK must be unpacked by xtool, not by cpio.
 - Update a SwiftPM lock: resolve the package inside `apple-dev`, then run
   `scripts/swiftpm-lock.py .build/workspace-state.json > pkgs/locks/NAME.json`.
