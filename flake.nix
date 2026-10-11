@@ -164,6 +164,16 @@
             ${p.xtool}/bin/xtool --help | grep -q "Cross-platform Xcode replacement"
             touch $out
           '';
+          # The patched toolchain, outside any FHS environment: compile, link
+          # and run a Linux program with Foundation, and start lldb.
+          swift-runs = pkgs.runCommand "swift-runs" { } ''
+            export HOME=$TMPDIR SDKROOT=${p.swift}/sysroot
+            echo 'import Foundation; print("swift ok", ProcessInfo.processInfo.processorCount > 0)' > hello.swift
+            ${p.swift}/usr/bin/swiftc hello.swift -o hello
+            ./hello | grep -qx "swift ok true"
+            ${p.swift}/usr/bin/lldb --version | grep -q "lldb version"
+            touch $out
+          '';
           python-imports = pkgs.runCommand "python-imports" { } ''
             ${p.python-env}/bin/python3 -c "import pymobiledevice3, cryptography, lzfse; from pymobiledevice3.services.installation_proxy import InstallationProxyService"
             ${p.python-env}/bin/pymobiledevice3 version > $out

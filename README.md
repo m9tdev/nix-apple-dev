@@ -10,7 +10,7 @@ for Nix: Swift 6.4, xtool, the iOS SDK from `Xcode.xip`, and pymobiledevice3.
 
 | Part | Where it comes from |
 |---|---|
-| Swift 6.4 toolchain | swift.org Ubuntu 24.04 build, pinned by hash, run in an FHS environment |
+| Swift 6.4 toolchain | swift.org Ubuntu 24.04 build, pinned by hash, patched for Nix (`autoPatchelfHook`, a host sysroot, clang config files) |
 | xtool, OpenAppleMacrosServer, actool | built by Nix from source with nixpkgs' Swift (ordinary Nix binaries); SwiftPM dependencies pinned in `pkgs/locks/` |
 | pymobiledevice3 11.27, cryptography | built by Nix from `python/uv.lock` (uv2nix) |
 | rcodesign | nixpkgs |
@@ -65,8 +65,15 @@ sudo nix run github:m9tdev/nix-apple-dev#usbmuxd     # USB service; run again af
 systemd, it starts the transient unit `apple-dev-usbmuxd`. Without systemd, it
 runs in the foreground.
 
-Running `apple-dev` needs unprivileged user namespaces (bubblewrap), as every
-FHS environment does. Nix builds do not: no package is built inside it.
+`apple-dev` is a small FHS environment (bubblewrap, so it needs unprivileged
+user namespaces). It exists only because SwiftBuild runs some tools by fixed
+path (`/usr/bin/touch` is compiled in; `/bin/cp`, `/usr/bin/sed` are in its
+specs). The toolchain and the tools are ordinary Nix binaries. Nix builds do
+not use bubblewrap.
+
+Linux Swift code also builds outside `apple-dev`:
+`SDKROOT=$(nix build --print-out-paths github:m9tdev/nix-apple-dev#swift)/sysroot swiftc …`
+(with SwiftPM, add `--build-system native`).
 
 ## Set up the SDK (one time per host)
 
@@ -113,16 +120,16 @@ With a free Apple ID: run `xtool auth`, then `xtool dev run` in the project dire
   The Swift-built tools (xtool, the toolchain) run only inside it.
 - Patches are in `patches/`. Upstream's scripts call the tools from `PATH`, and
   `install-toolchain.sh` is replaced: Nix builds everything it installs.
-- `pkgs/compat-libs.nix` supplies the library names that the swift.org toolchain
-  expects: narrow versioned ncurses, `libedit.so.2` and `libxml2.so.2`.
+- The toolchain links nixpkgs libraries. Two differ from Ubuntu: `libedit.so.2`
+  is nixpkgs' `libedit.so.0` (same ABI), and lldb needs narrow ncurses with
+  versioned symbols, which `pkgs/swift.nix` builds.
 - Upstream edits a writable toolchain for SwiftBuild. Here that edit is
   `patches/swift-strings-encoding-defaults.patch`.
 - `patches/xtool-offline-sdk-build.patch` lets `xtool sdk build` run offline (the
   toolset and the macro server come from Nix). Xcode.xip stores many files in Apple's
   compressed form (decmpfs), so the SDK must be unpacked by xtool, not by cpio.
-- Why an FHS environment at all: the swift.org Swift 6.4 toolchain (needed to
-  build apps against the Xcode 27 SDK) is a prebuilt Ubuntu binary. nixpkgs has
-  Swift 6.2.4, which is enough for the tools but not for the apps.
+- Two Swift versions: apps need Swift 6.4 (it matches the Xcode 27 SDK), the
+  swift.org build. The tools are built with nixpkgs' Swift 6.2.4.
 - Update a SwiftPM lock: resolve the package inside `apple-dev`, then run
   `scripts/swiftpm-lock.py .build/workspace-state.json > pkgs/locks/NAME.json`.
 - x86_64-linux only for now.

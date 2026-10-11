@@ -1,6 +1,6 @@
-# An FHS environment shaped like the Ubuntu 24.04 setup that upstream tested
-# (docs/DISTROS.md), with Swift 6.4 first on PATH: the swift.org toolchain is
-# a prebuilt Ubuntu binary. The tools themselves are ordinary Nix packages.
+# An FHS environment with Swift 6.4 first on PATH. The toolchain and the tools
+# are ordinary Nix binaries; this environment only supplies the fixed /usr/bin
+# and /bin paths that SwiftBuild and upstream's scripts call.
 #   NAME                 interactive shell
 #   NAME CMD ARGS...     run one command
 {
@@ -19,77 +19,51 @@
 }:
 
 let
-  compat = callPackage ./compat-libs.nix { };
-
   # libheif 1.16 renamed heif-convert to heif-dec (same arguments); Arch still
   # ships the old name, and upstream's AssetKit calls it for HEIC images.
   heifConvert = writeShellScriptBin "heif-convert" ''exec heif-dec "$@"'';
 in
 buildFHSEnv {
   inherit name;
+  # SwiftBuild runs some tools by fixed FHS path (/usr/bin/touch is compiled
+  # in; /bin/cp, /bin/chmod, /usr/bin/sed … are in its specs), and upstream's
+  # scripts expect a usual Linux userland. The toolchain and the tools do not
+  # need this environment for their libraries any more.
   targetPkgs =
     pkgs:
     with pkgs;
     [
-      # Swift toolchain runtime and C/C++ build basics
-      # gcc.cc: the unwrapped GCC tree (/usr/lib/gcc/<triple>/<ver>: crtbeginS.o,
-      # libgcc, libstdc++ headers) that clang finds by FHS layout
-      glibc
-      gcc
-      gcc.cc
-      binutils
-      gnumake
-      cmake
-      pkg-config
-      file
-      which
       coreutils
       findutils
       gnused
       gnugrep
       gawk
+      diffutils
+      patch
+      file
+      which
+      util-linux
       gnutar
       gzip
       xz
       bzip2
       zstd
-      diffutils
-      patch
+      zip
+      unzip
+      rsync
       git
       curl
       cacert
       openssl
-      zlib
-      libxml2
-      libedit
-      sqlite
-      libuuid
-      util-linux
-      llvm
-      # xtool build deps (pkg-config: libimobiledevice-1.0, openssl)
-      libimobiledevice
-      libplist
-      libusbmuxd
-      libimobiledevice-glue
-      libtatsu
-      # python: venv for pymobiledevice3 (the tailnet tunnel needs 3.13+);
-      # lldb from Swift 6.4 links libpython3.12
-      python313
-      python312
-      # ship.sh, actool (PDF and HEIC images), sdk-free
-      zip
-      unzip
-      rsync
+      libiconv
+      gnumake
+      cmake
+      pkg-config
+      # ship.sh, actool (PDF and HEIC images), sdk-free (apfs-fuse)
       poppler-utils
-      libheif
       libheif.bin
       heifConvert
       fuse3
-      # nix-ld style libs some pip wheels expect
-      stdenv.cc.cc.lib
-      libffi
-      # before ncurses: the FHS merge keeps the first file of a name
-      compat
     ]
     ++ tools;
 
