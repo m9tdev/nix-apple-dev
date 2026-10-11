@@ -1,0 +1,19 @@
+nix-apple-dev
+Copyright (c) 2026 Mathieu Post (MIT License, see LICENSE)
+
+Parts of this repository are derived from other MIT-licensed projects:
+
+- pkgs/sdk-finish.py, patches/upstream-tools-on-path.patch and
+  patches/swift-strings-encoding-defaults.patch are derived from
+  omarchy-apple-dev (https://github.com/joshuaswarren/omarchy-apple-dev),
+  Copyright (c) 2026 Joshua Warren, MIT License.
+- patches/xtool-offline-sdk-build.patch modifies xtool
+  (https://github.com/xtool-org/xtool), MIT License.
+- pkgs/swiftpm.nix follows the dependency vendoring of nixpkgs' swiftpm2nix,
+  and pkgs/ipsw.nix the nixpkgs ipsw package
+  (https://github.com/NixOS/nixpkgs), Copyright (c) 2003-2026 Eelco Dolstra
+  and the Nixpkgs/NixOS contributors, MIT License.
+
+The software these scripts download or build (Swift, xtool, pymobiledevice3,
+ipsw, WebDriverAgent, Xcode) keeps its own license. Xcode and the iOS SDK
+built from it are Apple's and unfree.

@@ -139,4 +139,4 @@ With a free Apple ID: run `xtool auth`, then `xtool dev run` in the project dire
 ## License
 
 MIT, see [LICENSE](LICENSE). Parts are derived from omarchy-apple-dev, xtool and
-nixpkgs (all MIT); LICENSE lists them. Xcode and the SDK built from it are Apple's.
+nixpkgs (all MIT); NOTICE lists them. Xcode and the SDK built from it are Apple's.
