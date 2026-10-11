@@ -1,0 +1,45 @@
+{
+  "nodes": {
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1789286504,
+        "narHash": "sha256-eiEK7cKZORNEvX0GeF3RtNEF/JXhgf2RqSp3230q13E=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "ef34387ddd751e1ab8857adf4676492d32eb24ec",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "nixpkgs": "nixpkgs",
+        "upstream": "upstream"
+      }
+    },
+    "upstream": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1791699031,
+        "narHash": "sha256-kAuaSPgqwDg0yqYNQjG88OJjFWlevGpNidSUqbt8640=",
+        "owner": "joshuaswarren",
+        "repo": "omarchy-apple-dev",
+        "rev": "b19eb10f8de3b5039746750e21d480002b0a9819",
+        "type": "github"
+      },
+      "original": {
+        "owner": "joshuaswarren",
+        "repo": "omarchy-apple-dev",
+        "rev": "b19eb10f8de3b5039746750e21d480002b0a9819",
+        "type": "github"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}
