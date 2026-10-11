@@ -34,16 +34,24 @@ programs.apple-dev.enable = true;
 programs.apple-dev.usb.enable = true;  # usbmuxd, if the iPhone connects to this host with a cable
 ```
 
-Without NixOS: `nix run github:m9tdev/nix-apple-dev` opens the shell, and
-`nix shell github:m9tdev/nix-apple-dev -c apple-dev-setup` runs the setup.
-You must start usbmuxd yourself.
+Without the module, one command for each part:
+
+```sh
+nix run github:m9tdev/nix-apple-dev                  # shell (or: nix run … -- CMD ARGS)
+nix run github:m9tdev/nix-apple-dev#setup            # toolchain + SDK in $HOME
+sudo nix run github:m9tdev/nix-apple-dev#usbmuxd     # USB service; run again after each reboot
+```
+
+`#usbmuxd` needs root because usbmuxd claims the iPhone's USB device. With
+systemd it starts the transient unit `apple-dev-usbmuxd`. Without systemd it
+runs in the foreground.
 
 ## Set up the toolchain (one time per user)
 
 1. Get Xcode 27.0 (its Swift must match 6.4). Use a browser
    (<https://developer.apple.com/download/all/?q=Xcode>) or:
-   `apple-dev ipsw download dev --more --output ~/Downloads` (Apple ID + 2FA;
-   use an `ipsw` release from 2026-10 or newer).
+   `nix run github:m9tdev/nix-apple-dev#ipsw -- download dev --more --output ~/Downloads`
+   (Apple ID + 2FA; this flake pins ipsw 3.1.736, because the nixpkgs version cannot sign in).
 2. `XCODE_XIP=~/Downloads/Xcode_27.xip apple-dev-setup`
    This takes about 15 minutes. At the end, `swift sdk list` shows `darwin`.
 3. On a second host, do not download Xcode again. Copy
