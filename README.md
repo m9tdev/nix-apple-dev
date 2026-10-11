@@ -135,3 +135,8 @@ With a free Apple ID: run `xtool auth`, then `xtool dev run` in the project dire
 - x86_64-linux only for now.
 - Apple's Xcode licence allows its use only on Apple-branded computers.
   You decide if that matters for your use.
+
+## License
+
+MIT, see [LICENSE](LICENSE). Parts are derived from omarchy-apple-dev, xtool and
+nixpkgs (all MIT); LICENSE lists them. Xcode and the SDK built from it are Apple's.
