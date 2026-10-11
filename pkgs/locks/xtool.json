@@ -1,0 +1,795 @@
+{
+  "dependencies": [
+    {
+      "subpath": "AEXML",
+      "packageRef": {
+        "identity": "aexml",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/tadija/AEXML.git",
+        "name": "AEXML"
+      },
+      "owner": "tadija",
+      "repo": "AEXML",
+      "rev": "db806756c989760b35108146381535aec231092b",
+      "hash": "sha256-6KvO8zT667Td+4qOeYzHbd51hDzFJFrxcVyYr2h5igc=",
+      "version": "4.7.0"
+    },
+    {
+      "subpath": "BigInt",
+      "packageRef": {
+        "identity": "bigint",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/attaswift/BigInt",
+        "name": "BigInt"
+      },
+      "owner": "attaswift",
+      "repo": "BigInt",
+      "rev": "e07e00fa1fd435143a2dcf8b7eec9a7710b2fdfe",
+      "hash": "sha256-1BiUU7e5z0jLcmInOg8CI6u8jOjrYWzg2KcaUAOM/YY=",
+      "version": "5.7.0"
+    },
+    {
+      "subpath": "JSONUtilities",
+      "packageRef": {
+        "identity": "jsonutilities",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/yonaskolb/JSONUtilities.git",
+        "name": "JSONUtilities"
+      },
+      "owner": "yonaskolb",
+      "repo": "JSONUtilities",
+      "rev": "128d2ffc22467f69569ef8ff971683e2393191a0",
+      "hash": "sha256-jl8XfgoB5IX0qwwDtzcWgK0u3SNG2HfrPoEb2a6/mlA=",
+      "version": "4.2.0"
+    },
+    {
+      "subpath": "OpenAPIKit",
+      "packageRef": {
+        "identity": "openapikit",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/mattpolzin/OpenAPIKit",
+        "name": "OpenAPIKit"
+      },
+      "owner": "mattpolzin",
+      "repo": "OpenAPIKit",
+      "rev": "57b6318128e3f901c93f4fbf98d1c1464ec168d3",
+      "hash": "sha256-pzh4ka2/DOharhaE9Jyt4di6f8a2xeeLUAw10BEd/w8=",
+      "version": "6.2.0"
+    },
+    {
+      "subpath": "OpenCombine",
+      "packageRef": {
+        "identity": "opencombine",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/OpenCombine/OpenCombine.git",
+        "name": "OpenCombine"
+      },
+      "owner": "OpenCombine",
+      "repo": "OpenCombine",
+      "rev": "8576f0d579b27020beccbccc3ea6844f3ddfc2c2",
+      "hash": "sha256-tw/WVY3TG8Jp+AO2rCA20x0u3lrg1wl7IaPkJXdfMzE=",
+      "version": "0.14.0"
+    },
+    {
+      "subpath": "PathKit",
+      "packageRef": {
+        "identity": "pathkit",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/kylef/PathKit.git",
+        "name": "PathKit"
+      },
+      "owner": "kylef",
+      "repo": "PathKit",
+      "rev": "3bfd2737b700b9a36565a8c94f4ad2b050a5e574",
+      "hash": "sha256-ewxTC1kpu6PXhwamCxYfI50ooYO1SIU0+IXH2tc/uv4=",
+      "version": "1.0.1"
+    },
+    {
+      "subpath": "Rainbow",
+      "packageRef": {
+        "identity": "rainbow",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/onevcat/Rainbow.git",
+        "name": "Rainbow"
+      },
+      "owner": "onevcat",
+      "repo": "Rainbow",
+      "rev": "cdf146ae671b2624917648b61c908d1244b98ca1",
+      "hash": "sha256-g0kwXVfVaKaux8VwKhPQgoFMDJefjGrapvvq3cnjjo0=",
+      "version": "4.2.1"
+    },
+    {
+      "subpath": "Spectre",
+      "packageRef": {
+        "identity": "spectre",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/kylef/Spectre.git",
+        "name": "Spectre"
+      },
+      "owner": "kylef",
+      "repo": "Spectre",
+      "rev": "26cc5e9ae0947092c7139ef7ba612e34646086c7",
+      "hash": "sha256-fipGRIgw+jV7Wrxa+xivRk7YMyxDhGFB6SHIHscrmV8=",
+      "version": "0.10.1"
+    },
+    {
+      "subpath": "SwiftCLI",
+      "packageRef": {
+        "identity": "swiftcli",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/jakeheis/SwiftCLI.git",
+        "name": "SwiftCLI"
+      },
+      "owner": "jakeheis",
+      "repo": "SwiftCLI",
+      "rev": "2e949055d9797c1a6bddcda0e58dada16cc8e970",
+      "hash": "sha256-PmjzLss0D12iy6YKsudFa8i63NQAssyCBqqq8VjRiH4=",
+      "version": "6.0.3"
+    },
+    {
+      "subpath": "SwiftyMobileDevice",
+      "packageRef": {
+        "identity": "swiftymobiledevice",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/xtool-org/SwiftyMobileDevice",
+        "name": "SwiftyMobileDevice"
+      },
+      "owner": "xtool-org",
+      "repo": "SwiftyMobileDevice",
+      "rev": "1f6e4cc614a31953bda5d1092a747cfdea90916f",
+      "hash": "sha256-weJbF89yUesLgToHraYo4mOMxwc+fccRIHnQWHxGX+0=",
+      "version": "1.7.0"
+    },
+    {
+      "subpath": "Version",
+      "packageRef": {
+        "identity": "version",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/mxcl/Version",
+        "name": "Version"
+      },
+      "owner": "mxcl",
+      "repo": "Version",
+      "rev": "3043fcd2a50375db76d89ff206a612471833d1c2",
+      "hash": "sha256-4ULkZBWu4gjtFTEjbSPQ+ir1VzHyIur8pDqCFHuLBu0=",
+      "version": "2.2.1"
+    },
+    {
+      "subpath": "XcodeGen",
+      "packageRef": {
+        "identity": "xcodegen",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/yonaskolb/XcodeGen",
+        "name": "XcodeGen"
+      },
+      "owner": "yonaskolb",
+      "repo": "XcodeGen",
+      "rev": "8d3d3476a69ae3e5d68e1adccc701c410c05eb36",
+      "hash": "sha256-NZshSK02+Vr013Ol4+OAhtnNddSqu5XCYaQ0jxegtHw=",
+      "version": "2.45.4"
+    },
+    {
+      "subpath": "XcodeProj",
+      "packageRef": {
+        "identity": "xcodeproj",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/tuist/XcodeProj.git",
+        "name": "XcodeProj"
+      },
+      "owner": "tuist",
+      "repo": "XcodeProj",
+      "rev": "01bb77000bc8c23a09ea2058f4954612f03cb705",
+      "hash": "sha256-GT5yFsED5XepK96aKj5l2EEbxx/i2w1YJgZyl4jQIXo=",
+      "version": "9.10.1"
+    },
+    {
+      "subpath": "Yams",
+      "packageRef": {
+        "identity": "yams",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/jpsim/Yams",
+        "name": "Yams"
+      },
+      "owner": "jpsim",
+      "repo": "Yams",
+      "rev": "3d6871d5b4a5cd519adf233fbb576e0a2af71c17",
+      "hash": "sha256-5uxD2eAJpMVHMStfWUzHcgjlp0d/EYcr1l+Qq2xlMxU=",
+      "version": "5.4.0"
+    },
+    {
+      "subpath": "async-http-client",
+      "packageRef": {
+        "identity": "async-http-client",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/swift-server/async-http-client.git",
+        "name": "async-http-client"
+      },
+      "owner": "swift-server",
+      "repo": "async-http-client",
+      "rev": "3a5b74a58782c3b4c1f0bc75e9b67b10c2494e8f",
+      "hash": "sha256-Kwqi0LGliQtKbBeGd5a8dCHhDEcKe+LgXt5/3Y8mhc0=",
+      "version": "1.33.1"
+    },
+    {
+      "subpath": "combine-schedulers",
+      "packageRef": {
+        "identity": "combine-schedulers",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/pointfreeco/combine-schedulers",
+        "name": "combine-schedulers"
+      },
+      "owner": "pointfreeco",
+      "repo": "combine-schedulers",
+      "rev": "dcccb979a2183b8df3334237e3dc1ae2b4116a86",
+      "hash": "sha256-cioK2HMuWCzkZhh/aQTbBtakGhtQcmITPAMRajPML5w=",
+      "version": "1.2.0"
+    },
+    {
+      "subpath": "swift-algorithms",
+      "packageRef": {
+        "identity": "swift-algorithms",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/apple/swift-algorithms.git",
+        "name": "swift-algorithms"
+      },
+      "owner": "apple",
+      "repo": "swift-algorithms",
+      "rev": "87e50f483c54e6efd60e885f7f5aa946cee68023",
+      "hash": "sha256-cJfOxBB74V7ZE4g6OehYIdtmqYnSFIkJLpkxPo9jiUo=",
+      "version": "1.2.1"
+    },
+    {
+      "subpath": "swift-argument-parser",
+      "packageRef": {
+        "identity": "swift-argument-parser",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/apple/swift-argument-parser",
+        "name": "swift-argument-parser"
+      },
+      "owner": "apple",
+      "repo": "swift-argument-parser",
+      "rev": "626b5b7b2f45e1b0b1c6f4a309296d1d21d7311b",
+      "hash": "sha256-90ECc3iEmxvOUk9iLKbQdQEz88dOisPqWsJLOFcKUV8=",
+      "version": "1.7.1"
+    },
+    {
+      "subpath": "swift-asn1",
+      "packageRef": {
+        "identity": "swift-asn1",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/apple/swift-asn1.git",
+        "name": "swift-asn1"
+      },
+      "owner": "apple",
+      "repo": "swift-asn1",
+      "rev": "eb50cbd14606a9161cbc5d452f18797c90ef0bab",
+      "hash": "sha256-IGFtbWfsGLOkrqIoVYNSh4gZGbWAsGHoUWOojHfL8QI=",
+      "version": "1.7.0"
+    },
+    {
+      "subpath": "swift-async-algorithms",
+      "packageRef": {
+        "identity": "swift-async-algorithms",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/apple/swift-async-algorithms.git",
+        "name": "swift-async-algorithms"
+      },
+      "owner": "apple",
+      "repo": "swift-async-algorithms",
+      "rev": "9d349bcc328ac3c31ce40e746b5882742a0d1272",
+      "hash": "sha256-yK1BaxQBAqOZlX+zYT5ZnaCK93uza5GJm4je8WhdW8o=",
+      "version": "1.1.3"
+    },
+    {
+      "subpath": "swift-atomics",
+      "packageRef": {
+        "identity": "swift-atomics",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/apple/swift-atomics.git",
+        "name": "swift-atomics"
+      },
+      "owner": "apple",
+      "repo": "swift-atomics",
+      "rev": "b601256eab081c0f92f059e12818ac1d4f178ff7",
+      "hash": "sha256-SGalN8YFd/3DtU9tr+vK0pqytRB1a8y6NNAgggrjZW4=",
+      "version": "1.3.0"
+    },
+    {
+      "subpath": "swift-certificates",
+      "packageRef": {
+        "identity": "swift-certificates",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/apple/swift-certificates",
+        "name": "swift-certificates"
+      },
+      "owner": "apple",
+      "repo": "swift-certificates",
+      "rev": "bde8ca32a096825dfce37467137c903418c1893d",
+      "hash": "sha256-n2sfGpua85xVWm91T5YUQVIWKVuVwzO8SNtqqeblb0s=",
+      "version": "1.19.1"
+    },
+    {
+      "subpath": "swift-clocks",
+      "packageRef": {
+        "identity": "swift-clocks",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/pointfreeco/swift-clocks",
+        "name": "swift-clocks"
+      },
+      "owner": "pointfreeco",
+      "repo": "swift-clocks",
+      "rev": "cc46202b53476d64e824e0b6612da09d84ffde8e",
+      "hash": "sha256-2wMxnmwzozszO3nW5iFvzV8fpkZcXunPYSgiUhdIW98=",
+      "version": "1.0.6"
+    },
+    {
+      "subpath": "swift-collections",
+      "packageRef": {
+        "identity": "swift-collections",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/apple/swift-collections",
+        "name": "swift-collections"
+      },
+      "owner": "apple",
+      "repo": "swift-collections",
+      "rev": "fea17c02d767f46b23070fdfdacc28a03a39232a",
+      "hash": "sha256-6FH5WnvmuuKoIU+q4GdRms2RuqOBrMJtqVhG4wMqTIY=",
+      "version": "1.5.1"
+    },
+    {
+      "subpath": "swift-concurrency-extras",
+      "packageRef": {
+        "identity": "swift-concurrency-extras",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/pointfreeco/swift-concurrency-extras",
+        "name": "swift-concurrency-extras"
+      },
+      "owner": "pointfreeco",
+      "repo": "swift-concurrency-extras",
+      "rev": "5a3825302b1a0d744183200915a47b508c828e6f",
+      "hash": "sha256-IEaHsIGYV4bz70BZo+tQjfusT/PyeE47SfBGv2DYNEk=",
+      "version": "1.3.2"
+    },
+    {
+      "subpath": "swift-configuration",
+      "packageRef": {
+        "identity": "swift-configuration",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/apple/swift-configuration.git",
+        "name": "swift-configuration"
+      },
+      "owner": "apple",
+      "repo": "swift-configuration",
+      "rev": "be76c4ad929eb6c4bcaf3351799f2adf9e6848a9",
+      "hash": "sha256-2ucU1u8JMhmZprKrmJLiP0aLf9epphImyeqn6gpNLWo=",
+      "version": "1.2.0"
+    },
+    {
+      "subpath": "swift-crypto",
+      "packageRef": {
+        "identity": "swift-crypto",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/apple/swift-crypto",
+        "name": "swift-crypto"
+      },
+      "owner": "apple",
+      "repo": "swift-crypto",
+      "rev": "1b6b2e274e85105bfa155183145a1dcfd63331f1",
+      "hash": "sha256-vVeVImEmj76ML2bzYTpEhrUuqlxwA4GyIN9KQSA6Zy0=",
+      "version": "4.5.0"
+    },
+    {
+      "subpath": "swift-dependencies",
+      "packageRef": {
+        "identity": "swift-dependencies",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/pointfreeco/swift-dependencies",
+        "name": "swift-dependencies"
+      },
+      "owner": "pointfreeco",
+      "repo": "swift-dependencies",
+      "rev": "706feb7858a7f6c242879d137b8ee30926aa5b26",
+      "hash": "sha256-+QFIhYkXBVLqp1WyJnHN+SC8O0FeOSzDGx5Ae4k2d50=",
+      "version": "1.12.0"
+    },
+    {
+      "subpath": "swift-distributed-tracing",
+      "packageRef": {
+        "identity": "swift-distributed-tracing",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/apple/swift-distributed-tracing.git",
+        "name": "swift-distributed-tracing"
+      },
+      "owner": "apple",
+      "repo": "swift-distributed-tracing",
+      "rev": "dc4030184203ffafbb2ec614352487235d747fe0",
+      "hash": "sha256-bxBqMvwj5lNCN4r/TXtwKxVEoRtjBn71YFO7X8KZv38=",
+      "version": "1.4.1"
+    },
+    {
+      "subpath": "swift-docc-plugin",
+      "packageRef": {
+        "identity": "swift-docc-plugin",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/swiftlang/swift-docc-plugin",
+        "name": "swift-docc-plugin"
+      },
+      "owner": "swiftlang",
+      "repo": "swift-docc-plugin",
+      "rev": "647c708be89f834fa6a6d4945442793a77ddf5b6",
+      "hash": "sha256-BqtE2E75mI7c+BxxqDW9hvLxWxo2bbVul6kjA+/lCaI=",
+      "version": "1.5.0"
+    },
+    {
+      "subpath": "swift-docc-symbolkit",
+      "packageRef": {
+        "identity": "swift-docc-symbolkit",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/swiftlang/swift-docc-symbolkit",
+        "name": "swift-docc-symbolkit"
+      },
+      "owner": "swiftlang",
+      "repo": "swift-docc-symbolkit",
+      "rev": "b45d1f2ed151d057b54504d653e0da5552844e34",
+      "hash": "sha256-+uQQiqVAon1UefkIM2FXwQIR5PVgR1K5e76Gvj4/g5M=",
+      "version": "1.0.0"
+    },
+    {
+      "subpath": "swift-http-structured-headers",
+      "packageRef": {
+        "identity": "swift-http-structured-headers",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/apple/swift-http-structured-headers.git",
+        "name": "swift-http-structured-headers"
+      },
+      "owner": "apple",
+      "repo": "swift-http-structured-headers",
+      "rev": "933538faa42c432d385f02e07df0ace7c5ecfc47",
+      "hash": "sha256-mNMRXKnT/w6a12W3eHTzl4yEGNxJnnYzb7XvCfKsv3w=",
+      "version": "1.7.0"
+    },
+    {
+      "subpath": "swift-http-types",
+      "packageRef": {
+        "identity": "swift-http-types",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/apple/swift-http-types",
+        "name": "swift-http-types"
+      },
+      "owner": "apple",
+      "repo": "swift-http-types",
+      "rev": "45eb0224913ea070ec4fba17291b9e7ecf4749ca",
+      "hash": "sha256-+NxNaAECoVu5soGlvSrq6Gtj4kbcQ7c5pIT+nzRkpcw=",
+      "version": "1.5.1"
+    },
+    {
+      "subpath": "swift-log",
+      "packageRef": {
+        "identity": "swift-log",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/apple/swift-log.git",
+        "name": "swift-log"
+      },
+      "owner": "apple",
+      "repo": "swift-log",
+      "rev": "5073617dac96330a486245e4c0179cb0a6fd2256",
+      "hash": "sha256-qshByKDRn60mlFHpxIGG2i3NkR3wk5RcndMSOo6BXic=",
+      "version": "1.12.0"
+    },
+    {
+      "subpath": "swift-nio",
+      "packageRef": {
+        "identity": "swift-nio",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/apple/swift-nio",
+        "name": "swift-nio"
+      },
+      "owner": "apple",
+      "repo": "swift-nio",
+      "rev": "f71c8d2a5e74a2c6d11a0fbe324774b5d6084237",
+      "hash": "sha256-WkPO6nnwexYNvxzZYS1uWvE1g37JMc2g0a+CpRa234U=",
+      "version": "2.99.0"
+    },
+    {
+      "subpath": "swift-nio-extras",
+      "packageRef": {
+        "identity": "swift-nio-extras",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/apple/swift-nio-extras.git",
+        "name": "swift-nio-extras"
+      },
+      "owner": "apple",
+      "repo": "swift-nio-extras",
+      "rev": "5a48717e29f62cb8326d6d42e46b562ca93847a6",
+      "hash": "sha256-Gc/DiN9FAuMVsZnQH8/ZOlvoTWx2na8CYdJmfwYnAg4=",
+      "version": "1.34.0"
+    },
+    {
+      "subpath": "swift-nio-http2",
+      "packageRef": {
+        "identity": "swift-nio-http2",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/apple/swift-nio-http2.git",
+        "name": "swift-nio-http2"
+      },
+      "owner": "apple",
+      "repo": "swift-nio-http2",
+      "rev": "81cc18264f92cd307ff98430f89372711d4f6fe9",
+      "hash": "sha256-qh6mf+CSCI/HyMik8jM5geyzYn5hOocjAHKEiC2p7QA=",
+      "version": "1.43.0"
+    },
+    {
+      "subpath": "swift-nio-ssl",
+      "packageRef": {
+        "identity": "swift-nio-ssl",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/apple/swift-nio-ssl.git",
+        "name": "swift-nio-ssl"
+      },
+      "owner": "apple",
+      "repo": "swift-nio-ssl",
+      "rev": "3f337058ccd7243c4cac7911477d8ad4c598d4da",
+      "hash": "sha256-01XUsyyRVgqoPdg60IVxJgJE0APzl3pmW0XESWI2Mbg=",
+      "version": "2.37.0"
+    },
+    {
+      "subpath": "swift-nio-transport-services",
+      "packageRef": {
+        "identity": "swift-nio-transport-services",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/apple/swift-nio-transport-services.git",
+        "name": "swift-nio-transport-services"
+      },
+      "owner": "apple",
+      "repo": "swift-nio-transport-services",
+      "rev": "67787bb645a5e67d2edcdfbe48a216cc549222d5",
+      "hash": "sha256-BknmarVnZXK22UBJifB4uVWw0rZMNQiQSaZhsyrEO2c=",
+      "version": "1.28.0"
+    },
+    {
+      "subpath": "swift-numerics",
+      "packageRef": {
+        "identity": "swift-numerics",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/apple/swift-numerics.git",
+        "name": "swift-numerics"
+      },
+      "owner": "apple",
+      "repo": "swift-numerics",
+      "rev": "0c0290ff6b24942dadb83a929ffaaa1481df04a2",
+      "hash": "sha256-bRkiRuxb4O3SmpsGZ5YaUR4cV3IQoES+u3xZTCzaQ+c=",
+      "version": "1.1.1"
+    },
+    {
+      "subpath": "swift-openapi-async-http-client",
+      "packageRef": {
+        "identity": "swift-openapi-async-http-client",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/swift-server/swift-openapi-async-http-client",
+        "name": "swift-openapi-async-http-client"
+      },
+      "owner": "swift-server",
+      "repo": "swift-openapi-async-http-client",
+      "rev": "3681f659d9417652b8119f0adbdf57c04b6cb292",
+      "hash": "sha256-XDLFt4Dum2MsW+jKHVh+MSkpl9uxj/4fL65uEdDykuE=",
+      "version": "1.5.0"
+    },
+    {
+      "subpath": "swift-openapi-generator",
+      "packageRef": {
+        "identity": "swift-openapi-generator",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/apple/swift-openapi-generator",
+        "name": "swift-openapi-generator"
+      },
+      "owner": "apple",
+      "repo": "swift-openapi-generator",
+      "rev": "5dd0da1c7da7bac8f0c458a02a76f69031137a80",
+      "hash": "sha256-K2OtZIyPyyqbmEiJChRWUHw6by068EvrQU/xBD24udg=",
+      "version": "1.12.1"
+    },
+    {
+      "subpath": "swift-openapi-runtime",
+      "packageRef": {
+        "identity": "swift-openapi-runtime",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/apple/swift-openapi-runtime",
+        "name": "swift-openapi-runtime"
+      },
+      "owner": "apple",
+      "repo": "swift-openapi-runtime",
+      "rev": "f039fa6d6338aab5164f3d1be16281524c9a8f89",
+      "hash": "sha256-ghhb6HJ3imwdMHVUEDX0/UKyAwJxeWA7wfkKNYn//50=",
+      "version": "1.11.0"
+    },
+    {
+      "subpath": "swift-openapi-urlsession",
+      "packageRef": {
+        "identity": "swift-openapi-urlsession",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/apple/swift-openapi-urlsession",
+        "name": "swift-openapi-urlsession"
+      },
+      "owner": "apple",
+      "repo": "swift-openapi-urlsession",
+      "rev": "576a65b4ffb8c12ddad4950dc21eea2ef071bec2",
+      "hash": "sha256-zJFMfs/8cUUkyTdINbJJNSgUI1Zaad5gLAAGQUynBGc=",
+      "version": "1.3.0"
+    },
+    {
+      "subpath": "swift-service-context",
+      "packageRef": {
+        "identity": "swift-service-context",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/apple/swift-service-context.git",
+        "name": "swift-service-context"
+      },
+      "owner": "apple",
+      "repo": "swift-service-context",
+      "rev": "d0997351b0c7779017f88e7a93bc30a1878d7f29",
+      "hash": "sha256-YgWUKCNVB4mLxlsr82xA+E0QKTXzQyLciI9CZ+u+9Yw=",
+      "version": "1.3.0"
+    },
+    {
+      "subpath": "swift-service-lifecycle",
+      "packageRef": {
+        "identity": "swift-service-lifecycle",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/swift-server/swift-service-lifecycle",
+        "name": "swift-service-lifecycle"
+      },
+      "owner": "swift-server",
+      "repo": "swift-service-lifecycle",
+      "rev": "9829955b385e5bb88128b73f1b8389e9b9c3191a",
+      "hash": "sha256-IJZsyoNbRksSC3CUoBRGs0mn0h0FW6y73saEeUpaOcc=",
+      "version": "2.11.0"
+    },
+    {
+      "subpath": "swift-subprocess",
+      "packageRef": {
+        "identity": "swift-subprocess",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/swiftlang/swift-subprocess",
+        "name": "swift-subprocess"
+      },
+      "owner": "swiftlang",
+      "repo": "swift-subprocess",
+      "rev": "11633673a41f509f8945f23c96c7acd4adafd679",
+      "hash": "sha256-4/iLmoaJcfNIp3ARndGLg2EwnEVygdcTpgqTgXC9s9U=",
+      "version": "0.5.0"
+    },
+    {
+      "subpath": "swift-syntax",
+      "packageRef": {
+        "identity": "swift-syntax",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/swiftlang/swift-syntax",
+        "name": "swift-syntax"
+      },
+      "owner": "swiftlang",
+      "repo": "swift-syntax",
+      "rev": "9de99a78f099e59caf2b2beec65a4c45d54b2081",
+      "hash": "sha256-Z45HEqyj3bkyxhpZ3Q61v2E+KtyxrnWOX2pp4edJlN4=",
+      "version": "603.0.1"
+    },
+    {
+      "subpath": "swift-system",
+      "packageRef": {
+        "identity": "swift-system",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/apple/swift-system",
+        "name": "swift-system"
+      },
+      "owner": "apple",
+      "repo": "swift-system",
+      "rev": "7c6ad0fc39d0763e0b699210e4124afd5041c5df",
+      "hash": "sha256-bfxm2WS+4qcgSzheWTvRloDAIIIHzPZ8SaAZq9bWmSc=",
+      "version": "1.6.4"
+    },
+    {
+      "subpath": "unxip",
+      "packageRef": {
+        "identity": "unxip",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/saagarjha/unxip",
+        "name": "unxip"
+      },
+      "owner": "saagarjha",
+      "repo": "unxip",
+      "rev": "6c3990517fcc4c1db6952fccf4c562fb14097601",
+      "hash": "sha256-+DYqb4Y2jqWEMungO+rE1UzMXLuAWAzsx6s0mbtOkR4=",
+      "version": "3.3.0"
+    },
+    {
+      "subpath": "websocket-kit",
+      "packageRef": {
+        "identity": "websocket-kit",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/vapor/websocket-kit.git",
+        "name": "websocket-kit"
+      },
+      "owner": "vapor",
+      "repo": "websocket-kit",
+      "rev": "90bbbdab3ede12c803cfbe91646f291c092517a3",
+      "hash": "sha256-rZhK8ggUqtUcwzvbZnWiNUBHFEWumpPD09kAwp6hims=",
+      "version": "2.16.2"
+    },
+    {
+      "subpath": "xadi",
+      "packageRef": {
+        "identity": "xadi",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/xtool-org/xadi",
+        "name": "xadi"
+      },
+      "owner": "xtool-org",
+      "repo": "xadi",
+      "rev": "2aad968e4806b8571f6f2bed22ecec00b0322f95",
+      "hash": "sha256-txK4vpQPskYFIzB+90sz8PEerZKFRBbtCnOysbWx7D4=",
+      "version": "0.4.1"
+    },
+    {
+      "subpath": "xctest-dynamic-overlay",
+      "packageRef": {
+        "identity": "xctest-dynamic-overlay",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/pointfreeco/xctest-dynamic-overlay",
+        "name": "xctest-dynamic-overlay"
+      },
+      "owner": "pointfreeco",
+      "repo": "xctest-dynamic-overlay",
+      "rev": "dfd70507def84cb5fb821278448a262c6ff2bbad",
+      "hash": "sha256-Cy21YISTmKUEvECe0MXZxB7GMbnC6OPqFq4RzZ5SlqE=",
+      "version": "1.9.0"
+    },
+    {
+      "subpath": "xtool-core",
+      "packageRef": {
+        "identity": "xtool-core",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/xtool-org/xtool-core",
+        "name": "xtool-core"
+      },
+      "owner": "xtool-org",
+      "repo": "xtool-core",
+      "rev": "f867f9c2aea16ac78ca14d0d2f948b47db0732b4",
+      "hash": "sha256-nx9vuyMaV9Ljbni5+4NeoS0L3AuPYoddo2RkATQ2I6k=",
+      "version": "1.5.0"
+    },
+    {
+      "subpath": "zsign",
+      "packageRef": {
+        "identity": "zsign",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/xtool-org/zsign",
+        "name": "zsign"
+      },
+      "owner": "xtool-org",
+      "repo": "zsign",
+      "rev": "19aab76b3f1388966a3ed4fc11b357f95aafc70b",
+      "hash": "sha256-XKQB0nfDfd/Kb8yEWOq4v4S8QLDZQl4Dwy0thgw6zm0=",
+      "version": "1.8.0"
+    }
+  ],
+  "artifacts": [
+    {
+      "packageRef": {
+        "identity": "xadi",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/xtool-org/xadi",
+        "name": "xadi"
+      },
+      "targetName": "XADIBinary",
+      "kind": {
+        "typedArtifactsArchive": {
+          "_0": [
+            "staticLibrary"
+          ]
+        }
+      },
+      "url": "https://github.com/xtool-org/xadi/releases/download/source-0.4.1/XADIBinary.artifactbundle.zip",
+      "sha256": "2fc1aeb058f6067d23e2f2217a2ea0ec843057e1d82c13db37e30b8219d8d469",
+      "path": "xadi/XADIBinary/XADIBinary.artifactbundle"
+    }
+  ]
+}

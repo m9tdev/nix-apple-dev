@@ -1,0 +1,47 @@
+{
+  "dependencies": [
+    {
+      "subpath": "AssetKit",
+      "packageRef": {
+        "identity": "assetkit",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/joshuaswarren/AssetKit",
+        "name": "AssetKit"
+      },
+      "owner": "joshuaswarren",
+      "repo": "AssetKit",
+      "rev": "705ce2f2b797835cf4bac65e0dff1e9ca37ba0bf",
+      "hash": "sha256-FV2xDPU7AcQKGFEeGH63OQIdewYzwcjJQ921SzTY7uM=",
+      "version": null
+    },
+    {
+      "subpath": "h",
+      "packageRef": {
+        "identity": "h",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/rarestype/h",
+        "name": "h"
+      },
+      "owner": "rarestype",
+      "repo": "h",
+      "rev": "aa3626829160917d4378330617971977cbd78f5b",
+      "hash": "sha256-/urkAQYo4ppIcIHNH+xKBXLUxvub5KJPwDBTAzme3Kg=",
+      "version": "1.0.1"
+    },
+    {
+      "subpath": "swift-png",
+      "packageRef": {
+        "identity": "swift-png",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/tayloraswift/swift-png",
+        "name": "swift-png"
+      },
+      "owner": "tayloraswift",
+      "repo": "swift-png",
+      "rev": "8a0bcd4df5e4b307c804937776a56dd6ecdf6396",
+      "hash": "sha256-52/UjAMxRHKz2skck5o5sSbm+iD8OkBY3HOur+56YQA=",
+      "version": "4.5.1"
+    }
+  ],
+  "artifacts": []
+}

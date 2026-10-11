@@ -3,6 +3,22 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    # pymobiledevice3 & co. from python/uv.lock (nixpkgs has 7.7.0; upstream needs 11.26+)
+    pyproject-nix = {
+      url = "github:pyproject-nix/pyproject.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    uv2nix = {
+      url = "github:pyproject-nix/uv2nix";
+      inputs.pyproject-nix.follows = "pyproject-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    pyproject-build-systems = {
+      url = "github:pyproject-nix/build-system-pkgs";
+      inputs.pyproject-nix.follows = "pyproject-nix";
+      inputs.uv2nix.follows = "uv2nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     # The scripts that do the user-space part (xtool, SDK, signing, device runs).
     upstream = {
       url = "github:joshuaswarren/omarchy-apple-dev/b19eb10f8de3b5039746750e21d480002b0a9819";
@@ -10,25 +26,55 @@
     };
   };
 
-  outputs = { self, nixpkgs, upstream }:
+  outputs = { self, nixpkgs, upstream, pyproject-nix, uv2nix, pyproject-build-systems }:
     let
       systems = [ "x86_64-linux" ];
       forAll = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
     in
     {
-      overlays.default = final: prev: {
-        apple-dev-swift = final.callPackage ./pkgs/swift.nix { };
-        apple-dev = final.callPackage ./pkgs/fhs.nix { swift = final.apple-dev-swift; inherit upstream; };
-        apple-dev-usbmuxd = final.callPackage ./pkgs/usbmuxd-service.nix { };
-      };
+      # The packages, built with this flake's nixpkgs (the tools need its exact
+      # toolchain and FHS environment), under apple-dev-* names.
+      overlays.default = final: prev:
+        let p = self.packages.${final.stdenv.hostPlatform.system}; in {
+          apple-dev = p.apple-dev;
+          apple-dev-usbmuxd = p.usbmuxd;
+          apple-dev-ipsw = p.ipsw;
+        };
 
-      packages = forAll (pkgs: rec {
-        swift = pkgs.callPackage ./pkgs/swift.nix { };
-        apple-dev = pkgs.callPackage ./pkgs/fhs.nix { inherit swift upstream; };
-        usbmuxd = pkgs.callPackage ./pkgs/usbmuxd-service.nix { };
-        ipsw = pkgs.callPackage ./pkgs/ipsw.nix { };
-        default = apple-dev;
-      });
+      packages = forAll (pkgs:
+        let
+          swift = pkgs.callPackage ./pkgs/swift.nix { };
+          mkFHSEnv = pkgs.callPackage ./pkgs/fhs-env.nix { inherit swift; };
+          buildShell = mkFHSEnv { name = "apple-dev-build"; };
+          mkSwiftPM = pkgs.callPackage ./pkgs/swiftpm.nix { };
+          tools = import ./pkgs/tools.nix {
+            inherit (pkgs) lib fetchFromGitHub;
+            inherit mkSwiftPM buildShell upstream;
+          };
+          ipsw = pkgs.callPackage ./pkgs/ipsw.nix { };
+          python-env = pkgs.callPackage ./pkgs/python.nix {
+            inherit pyproject-nix uv2nix pyproject-build-systems;
+          };
+          upstream-patched = pkgs.callPackage ./pkgs/upstream.nix {
+            src = upstream;
+            inherit (tools) xtool open-apple-macros actool;
+            inherit ipsw python-env;
+            inherit (pkgs) rcodesign;
+          };
+          apple-dev = pkgs.callPackage ./pkgs/fhs.nix {
+            inherit mkFHSEnv;
+            upstream = upstream-patched;
+            # first on PATH: python-env's python3 has cryptography for upstream's tools
+            tools = [ python-env tools.xtool ipsw pkgs.rcodesign ];
+          };
+        in
+        {
+          inherit swift ipsw python-env upstream-patched apple-dev;
+          inherit (tools) xtool open-apple-macros actool;
+          apple-dev-build = buildShell;
+          usbmuxd = pkgs.callPackage ./pkgs/usbmuxd-service.nix { };
+          default = apple-dev;
+        });
 
       # One command each, no NixOS module needed:
       #   nix run github:m9tdev/nix-apple-dev                 shell (or: … -- CMD ARGS)

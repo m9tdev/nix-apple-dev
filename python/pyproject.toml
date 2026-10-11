@@ -1,0 +1,10 @@
+[project]
+name = "apple-dev-python"
+version = "0.1.0"
+description = "Python tools for nix-apple-dev (pymobiledevice3 and upstream's script deps)"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+  "pymobiledevice3>=11.26",
+  # upstream tools/provision-dev.py, asc.py
+  "cryptography",
+]

@@ -1,0 +1,19 @@
+{
+  "dependencies": [
+    {
+      "subpath": "swift-syntax",
+      "packageRef": {
+        "identity": "swift-syntax",
+        "kind": "remoteSourceControl",
+        "location": "https://github.com/swiftlang/swift-syntax.git",
+        "name": "swift-syntax"
+      },
+      "owner": "swiftlang",
+      "repo": "swift-syntax",
+      "rev": "050f1a346fbbac0ca2cfb15a95274f7bd1cf0ccf",
+      "hash": "sha256-qRs7x0c8RSIC7yXjUDnF6HaEhkWsXPeAoLa9Tc538cI=",
+      "version": "604.0.0"
+    }
+  ],
+  "artifacts": []
+}
