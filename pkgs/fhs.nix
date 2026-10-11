@@ -12,12 +12,18 @@ let
 
   compat = callPackage ./compat-libs.nix { };
 
+  # libheif 1.16 renamed heif-convert to heif-dec (same arguments); Arch still
+  # ships the old name, and upstream's AssetKit calls it for HEIC images.
+  heifConvert = writeShellScriptBin "heif-convert" ''exec heif-dec "$@"'';
+
   env = buildFHSEnv {
     name = "apple-dev";
 
     targetPkgs = pkgs: with pkgs; [
       # Swift toolchain runtime and C/C++ build basics
-      glibc gcc binutils gnumake cmake pkg-config file which
+      # gcc.cc: the unwrapped GCC tree (/usr/lib/gcc/<triple>/<ver>: crtbeginS.o,
+      # libgcc, libstdc++ headers) that clang finds by FHS layout
+      glibc gcc gcc.cc binutils gnumake cmake pkg-config file which
       coreutils findutils gnused gnugrep gawk gnutar gzip xz bzip2 zstd diffutils patch
       git curl cacert openssl zlib libxml2 libedit sqlite libuuid util-linux
       llvm
@@ -27,7 +33,7 @@ let
       # lldb from Swift 6.4 links libpython3.12
       python313 python312
       # ship.sh, actool (PDF and HEIC images), sdk-free
-      zip unzip rsync poppler-utils libheif fuse3
+      zip unzip rsync poppler-utils libheif libheif.bin heifConvert fuse3
       # nix-ld style libs some pip wheels expect
       stdenv.cc.cc.lib libffi
       # before ncurses: the FHS merge keeps the first file of a name
