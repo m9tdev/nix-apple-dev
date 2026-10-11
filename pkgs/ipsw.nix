@@ -1,36 +1,45 @@
-# ipsw, the upstream release binary (static Go, pinned by hash).
-# nixpkgs (2026-10) has 3.1.673, whose developer-portal login (`ipsw download
-# dev`, the Xcode download) fails since Apple changed the sign-in page;
-# 3.1.736 works (checked 2026-10-11). It cannot be built from source: the code
-# imports pkg/sandbox, which upstream keeps out of git (.gitignore).
+# ipsw from source: the nixpkgs package (3.1.673), updated. 3.1.673's
+# developer-portal login (`ipsw download dev`, the Xcode download) fails since
+# Apple changed the sign-in page; 3.1.736 works (checked 2026-10-11).
+#
+# proxyVendor: two files behind the `sandbox` build tag import ipsw's
+# closed-source pkg/sandbox (not in git). A normal build does not compile them,
+# but `go mod vendor` resolves the imports of every build tag and fails;
+# `go mod download` (proxyVendor) does not. Upstream's release config notes
+# the same problem with `go mod tidy`.
 {
   lib,
-  stdenvNoCC,
-  fetchurl,
+  fetchFromGitHub,
+  buildGoModule,
 }:
 
-stdenvNoCC.mkDerivation (finalAttrs: {
+buildGoModule (finalAttrs: {
   pname = "ipsw";
   version = "3.1.736";
 
-  src = fetchurl {
-    url = "https://github.com/blacktop/ipsw/releases/download/v${finalAttrs.version}/ipsw_${finalAttrs.version}_linux_x86_64.tar.gz";
-    hash = "sha256-Ny1acX2vBE0cMsGH9z3jTg6ueY2tI8a5Wj1Bl9NQ9/o=";
+  src = fetchFromGitHub {
+    owner = "blacktop";
+    repo = "ipsw";
+    tag = "v${finalAttrs.version}";
+    hash = "sha256-HTPGSycl1HAGqxHZWPwJ5l518/57i0qI5O5NMuvEyxw=";
   };
 
-  sourceRoot = ".";
-  installPhase = ''
-    runHook preInstall
-    install -Dm755 ipsw $out/bin/ipsw
-    runHook postInstall
-  '';
+  proxyVendor = true;
+  vendorHash = "sha256-zj9iBRWjYdX2uZ2r9ebe4oUT89hTfO8RICEPK05Vpeo=";
+
+  ldflags = [
+    "-s"
+    "-w"
+    "-X github.com/blacktop/ipsw/cmd/ipsw/cmd.AppVersion=${finalAttrs.version}"
+    "-X github.com/blacktop/ipsw/cmd/ipsw/cmd.AppBuildCommit=${finalAttrs.src.tag}"
+  ];
+
+  subPackages = [ "cmd/ipsw" ];
 
   meta = {
     description = "iOS/macOS Research Swiss Army Knife";
     homepage = "https://blacktop.github.io/ipsw";
     license = lib.licenses.mit;
-    sourceProvenance = [ lib.sourceTypes.binaryNativeCode ];
-    platforms = [ "x86_64-linux" ];
     mainProgram = "ipsw";
   };
 })

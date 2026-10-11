@@ -10,7 +10,7 @@ Parts of this repository are derived from other MIT-licensed projects:
 - patches/xtool-offline-sdk-build.patch modifies xtool
   (https://github.com/xtool-org/xtool), MIT License.
 - pkgs/swiftpm.nix follows the dependency vendoring of nixpkgs' swiftpm2nix,
-  and pkgs/ipsw.nix the nixpkgs ipsw package
+  and pkgs/ipsw.nix is based on the nixpkgs ipsw package
   (https://github.com/NixOS/nixpkgs), Copyright (c) 2003-2026 Eelco Dolstra
   and the Nixpkgs/NixOS contributors, MIT License.
 

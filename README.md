@@ -14,7 +14,7 @@ for Nix: Swift 6.4, xtool, the iOS SDK from `Xcode.xip`, and pymobiledevice3.
 | xtool, OpenAppleMacrosServer, actool | built by Nix from source with nixpkgs' Swift (ordinary Nix binaries); SwiftPM dependencies pinned in `pkgs/locks/` |
 | pymobiledevice3 11.27, cryptography | built by Nix from `python/uv.lock` (uv2nix) |
 | rcodesign | nixpkgs |
-| ipsw 3.1.736 | the release binary, pinned by hash (the source cannot build: see `pkgs/ipsw.nix`) |
+| ipsw 3.1.736 | built from source (newer than nixpkgs, whose version cannot sign in to Apple any more) |
 | xtool's Linux linker toolset | release tarball, pinned by hash (xtool would download it) |
 | upstream scripts | pinned revision, patched to call the tools above from `PATH` (`patches/`) |
 | iOS SDK (`ios-sdk`) | built by Nix from your own `Xcode_27.xip` (a `requireFile`: Nix cannot download it). Only the SDK (1.2 GB) is kept; Xcode.app is never stored. |
