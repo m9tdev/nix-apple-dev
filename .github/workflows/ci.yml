@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      # Everything except ios-sdk (it needs Apple's Xcode.xip): the tools
+      # (built with nixpkgs' Swift), the Python environment, the patched
+      # upstream scripts, the FHS environment, formatting.
+      - name: nix flake check
+        run: nix flake check -L --show-trace
+      # Running the FHS environment needs unprivileged user namespaces, which
+      # Ubuntu's AppArmor restricts by default on GitHub runners.
+      - name: Smoke test apple-dev
+        run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          nix run .#apple-dev -- swift --version
+          nix run .#apple-dev -- bash -c 'xtool --help | head -1; pymobiledevice3 version; command -v device-run.sh'

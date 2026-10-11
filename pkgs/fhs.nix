@@ -4,7 +4,15 @@
 # - `apple-dev-setup`: builds the iOS SDK from the Xcode.xip in the Nix store
 #   and links it for SwiftPM in $HOME. The home-manager module makes the same
 #   links declaratively; this command is for everyone else.
-{ lib, writeShellScriptBin, symlinkJoin, mkFHSEnv, upstream, flakeSrc, tools ? [ ] }:
+{
+  lib,
+  writeShellScriptBin,
+  symlinkJoin,
+  mkFHSEnv,
+  upstream,
+  flakeSrc,
+  tools ? [ ],
+}:
 
 let
   env = mkFHSEnv {
@@ -50,8 +58,18 @@ let
 in
 symlinkJoin {
   name = "apple-dev";
-  paths = [ env setup ];
-  passthru = { inherit env setup tools upstream; };
+  paths = [
+    env
+    setup
+  ];
+  passthru = {
+    inherit
+      env
+      setup
+      tools
+      upstream
+      ;
+  };
   meta = {
     description = "iOS app development on Linux: Swift 6.4, xtool, pymobiledevice3 in an FHS environment";
     mainProgram = "apple-dev";

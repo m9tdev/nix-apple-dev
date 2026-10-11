@@ -8,7 +8,21 @@
 # sdk-finish.py (upstream's install_darwin_tools / install_oam: actool,
 # ibtool, momc, the macro server, the plist/JSON defaults). Output: the
 # registered bundle, ready to link into ~/.swiftpm/swift-sdks/.
-{ lib, stdenvNoCC, requireFile, fetchurl, xar, pbzx, cpio, python3, swift, xtool, open-apple-macros, actool, upstream }:
+{
+  lib,
+  stdenvNoCC,
+  requireFile,
+  fetchurl,
+  xar,
+  pbzx,
+  cpio,
+  python3,
+  swift,
+  xtool,
+  open-apple-macros,
+  actool,
+  upstream,
+}:
 
 let
   xcodeVersion = "27.0";
@@ -36,7 +50,6 @@ let
     "./Xcode.app/Contents/Frameworks/SiriSSUKitModel.framework/Versions/A/Resources/*"
   ];
 
-
   # xtool's prebuilt Linux toolset for Apple targets (ld64.lld, libtool, …);
   # xtool would download it during `sdk build` (SDKBuilder.darwinToolsVersion).
   toolset = fetchurl {
@@ -51,7 +64,14 @@ stdenvNoCC.mkDerivation {
   dontUnpack = true;
 
   # swift: `xtool sdk install` runs `swift sdk install` (any recent Swift)
-  nativeBuildInputs = [ xar pbzx cpio python3 swift xtool ];
+  nativeBuildInputs = [
+    xar
+    pbzx
+    cpio
+    python3
+    swift
+    xtool
+  ];
 
   # No network in the sandbox: xtool (patched, see patch-xtool.py) reads these.
   XTOOL_TOOLSET_TARBALL = toolset;

@@ -3,7 +3,11 @@
 # dev`, the Xcode download) fails since Apple changed the sign-in page;
 # 3.1.736 works (checked 2026-10-11). It cannot be built from source: the code
 # imports pkg/sandbox, which upstream keeps out of git (.gitignore).
-{ lib, stdenvNoCC, fetchurl }:
+{
+  lib,
+  stdenvNoCC,
+  fetchurl,
+}:
 
 stdenvNoCC.mkDerivation (finalAttrs: {
   pname = "ipsw";

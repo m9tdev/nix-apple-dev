@@ -3,7 +3,11 @@
 # SwiftBuild cannot re-encode .strings files outside Darwin, so the encodings
 # must be named; upstream install-toolchain.sh edits a writable toolchain). It runs inside the apple-dev FHS environment,
 # which supplies the Ubuntu library names, so nothing is patchelf'd.
-{ lib, stdenvNoCC, fetchurl }:
+{
+  lib,
+  stdenvNoCC,
+  fetchurl,
+}:
 
 stdenvNoCC.mkDerivation {
   pname = "swift";

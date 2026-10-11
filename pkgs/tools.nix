@@ -1,8 +1,19 @@
 # The tools upstream's installer builds with SwiftPM in $HOME, built by Nix
 # with nixpkgs' Swift instead (same pinned revisions as upstream
 # install-toolchain.sh). They run on the host, with or without apple-dev.
-{ fetchFromGitHub, mkSwiftPM, upstream, libimobiledevice, libplist, libusbmuxd
-, libimobiledevice-glue, openssl, xz, zlib, bzip2 }:
+{
+  fetchFromGitHub,
+  mkSwiftPM,
+  upstream,
+  libimobiledevice,
+  libplist,
+  libusbmuxd,
+  libimobiledevice-glue,
+  openssl,
+  xz,
+  zlib,
+  bzip2,
+}:
 
 {
   # xtool 1.20.1 plus upstream's unreleased fixes (install-toolchain.sh XTOOL_SHA).
@@ -24,8 +35,14 @@
       grep -q XTOOL_OAM_SERVER Sources/XToolSupport/SDKBuilder.swift
     '';
     systemLibraries = [
-      libimobiledevice libplist libusbmuxd libimobiledevice-glue openssl
-      xz zlib bzip2 # unxip's lzma and zlib targets
+      libimobiledevice
+      libplist
+      libusbmuxd
+      libimobiledevice-glue
+      openssl
+      xz
+      zlib
+      bzip2 # unxip's lzma and zlib targets
     ];
     meta.description = "Cross-platform Xcode replacement (xtool-org/xtool, with omarchy-apple-dev's fixes)";
   };

@@ -2,7 +2,11 @@
 # It needs root because it claims the iPhone's USB device. With systemd it
 # starts a transient unit (gone on reboot: run it again after a reboot);
 # without systemd it runs in the foreground.
-{ writeShellScriptBin, usbmuxd, systemd }:
+{
+  writeShellScriptBin,
+  usbmuxd,
+  systemd,
+}:
 
 writeShellScriptBin "apple-dev-usbmuxd" ''
   set -euo pipefail

@@ -3,7 +3,12 @@
 # `apple-dev-setup`, but declarative: a switch updates them, and the SDK is
 # kept from garbage collection as part of the home generation.
 self:
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 let
   cfg = config.programs.apple-dev;
@@ -40,7 +45,8 @@ in
       # SwiftPM reads $XDG_CONFIG_HOME/swiftpm when XDG_CONFIG_HOME is set,
       # else ~/.swiftpm: link both.
       ".swiftpm/swift-sdks/darwin.artifactbundle".source = bundle;
-      "${lib.removePrefix "${config.home.homeDirectory}/" config.xdg.configHome}/swiftpm/swift-sdks/darwin.artifactbundle".source = bundle;
+      "${lib.removePrefix "${config.home.homeDirectory}/" config.xdg.configHome}/swiftpm/swift-sdks/darwin.artifactbundle".source =
+        bundle;
       # upstream's ship.sh and tools/asc.py look next to the SDK cache
       ".cache/xtool/darwin-nix.xtoolsdk.version.plist".source = "${cfg.sdk.package}/version.plist";
       ".cache/xtool/darwin-nix.xtoolsdk.SiriSSUKitModel".source = "${cfg.sdk.package}/SiriSSUKitModel";

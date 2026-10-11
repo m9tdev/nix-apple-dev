@@ -6,12 +6,21 @@
 # - libedit: Debian numbers the same ABI .so.2; NixOS .so.0. The FHS loader
 #   cache indexes by SONAME, so copy the file and set the SONAME.
 # - libxml2: 2.14 changed the SONAME to .so.16; 2.13 still is .so.2.
-{ runCommand, patchelf, ncurses, libedit, libxml2_13 }:
+{
+  runCommand,
+  patchelf,
+  ncurses,
+  libedit,
+  libxml2_13,
+}:
 
 let
   narrowCurses = (ncurses.override { unicodeSupport = false; }).overrideAttrs (old: {
     pname = "ncurses-narrow-versioned";
-    configureFlags = old.configureFlags ++ [ "--with-versioned-syms" "--with-termlib" ];
+    configureFlags = old.configureFlags ++ [
+      "--with-versioned-syms"
+      "--with-termlib"
+    ];
   });
 in
 runCommand "apple-dev-compat-libs" { nativeBuildInputs = [ patchelf ]; } ''
