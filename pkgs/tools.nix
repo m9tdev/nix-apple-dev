@@ -1,6 +1,6 @@
 # The tools upstream's installer builds with SwiftPM in $HOME, built by Nix
 # instead (same pinned revisions as upstream install-toolchain.sh).
-{ lib, fetchFromGitHub, mkSwiftPM, buildShell, upstream }:
+{ lib, fetchFromGitHub, python3, mkSwiftPM, buildShell, upstream }:
 
 let
   # Copy a SwiftPM release product and what it loads at run time (shared
@@ -30,6 +30,8 @@ in
     };
     lock = ./locks/xtool.json;
     inherit buildShell;
+    nativeBuildInputs = [ python3 ];
+    postPatch = "python3 ${./patch-xtool.py}";
     swiftBuildFlags = [ "--product" "xtool" ];
     installPhase = installProduct "xtool";
     meta.mainProgram = "xtool";

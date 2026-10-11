@@ -15,8 +15,12 @@ for Nix: Swift 6.4, xtool, the iOS SDK from `Xcode.xip`, and pymobiledevice3.
 | pymobiledevice3 11.27, cryptography | built by Nix from `python/uv.lock` (uv2nix) |
 | rcodesign | nixpkgs |
 | ipsw 3.1.736 | the release binary, pinned by hash (the source cannot build: see `pkgs/ipsw.nix`) |
+| xtool's Linux linker toolset | release tarball, pinned by hash (xtool would download it) |
 | upstream scripts | pinned revision, patched to use the tools above (`pkgs/patch-upstream.py`) |
-| iOS SDK | **`$HOME`**: built from your `Xcode.xip` by `apple-dev-setup`. Apple's files must not go into the Nix store. |
+| iOS SDK (`ios-sdk`) | built by Nix from your own `Xcode_27.xip` (a `requireFile`: Nix cannot download it). Only the SDK (1.2 GB) is kept; Xcode.app is never stored. |
+
+Everything is in the Nix store. `$HOME` only has links to the SDK for SwiftPM.
+The SDK is unfree (Apple's files): never push it to a public binary cache.
 
 ## Install
 
@@ -54,16 +58,25 @@ runs in the foreground.
 The Nix build sandbox must allow user namespaces, because the tools are built
 inside the FHS environment with bubblewrap. NixOS allows them by default.
 
-## Set up the SDK (one time per user)
+## Set up the SDK (one time per host)
 
-1. Get Xcode 27.0. Its Swift must match 6.4. Download it in a browser
+1. Get Xcode 27.0 (its Swift matches 6.4). Download it in a browser
    (<https://developer.apple.com/download/all/?q=Xcode>), or run
    `nix run github:m9tdev/nix-apple-dev#ipsw -- download dev --more --output ~/Downloads`
    (Apple ID + 2FA).
-2. `XCODE_XIP=~/Downloads/Xcode_27.xip apple-dev-setup`
-   This takes about 3 minutes. At the end, `swift sdk list` shows `darwin`.
-3. On a second host, do not download Xcode again. Copy
-   `~/.cache/xtool/darwin-*.xtoolsdk` to that host, then run `apple-dev-setup --repair`.
+2. Add it to the Nix store, then delete the download:
+   `nix-store --add-fixed sha256 ~/Downloads/Xcode_27.xip`
+3. `apple-dev-setup`
+   This builds the SDK (about 2 minutes; xtool unpacks the xip to about 10 GB of
+   temporary space) and registers it. At the end, `swift sdk list` shows `darwin`.
+
+Another host does not need the xip: copy the built SDK there
+(`nix copy --to ssh://HOST $(nix build --print-out-paths github:m9tdev/nix-apple-dev#ios-sdk)`),
+then run `apple-dev-setup` on that host.
+
+After `nix-collect-garbage` the xip can be gone; the SDK stays (setup makes it a
+GC root). To build the SDK again (for example after an update of this flake),
+add the xip to the store again.
 
 ## Sign and install
 
@@ -91,6 +104,9 @@ With a free Apple ID: run `xtool auth`, then `xtool dev run` in the project dire
   expects: narrow versioned ncurses, `libedit.so.2` and `libxml2.so.2`.
 - Upstream patches a writable toolchain for SwiftBuild. Here that patch is
   applied at build time (`pkgs/patch-xcspec.py`).
+- `pkgs/patch-xtool.py` lets `xtool sdk build` run offline (the toolset and the
+  macro server come from Nix). Xcode.xip stores many files in Apple's
+  compressed form (decmpfs), so the SDK must be unpacked by xtool, not by cpio.
 - Update a SwiftPM lock: resolve the package inside `apple-dev`, then run
   `scripts/swiftpm-lock.py .build/workspace-state.json > pkgs/locks/NAME.json`.
 - x86_64-linux only for now.

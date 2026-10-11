@@ -29,7 +29,11 @@
   outputs = { self, nixpkgs, upstream, pyproject-nix, uv2nix, pyproject-build-systems }:
     let
       systems = [ "x86_64-linux" ];
-      forAll = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
+      # Unfree: only the SDK built from the user's own Xcode.xip.
+      forAll = f: nixpkgs.lib.genAttrs systems (system: f (import nixpkgs {
+        inherit system;
+        config.allowUnfreePredicate = p: builtins.elem (nixpkgs.lib.getName p) [ "ios-sdk" "Xcode_27.xip" ];
+      }));
     in
     {
       # The packages, built with this flake's nixpkgs (the tools need its exact
@@ -48,7 +52,7 @@
           buildShell = mkFHSEnv { name = "apple-dev-build"; };
           mkSwiftPM = pkgs.callPackage ./pkgs/swiftpm.nix { };
           tools = import ./pkgs/tools.nix {
-            inherit (pkgs) lib fetchFromGitHub;
+            inherit (pkgs) lib fetchFromGitHub python3;
             inherit mkSwiftPM buildShell upstream;
           };
           ipsw = pkgs.callPackage ./pkgs/ipsw.nix { };
@@ -61,15 +65,21 @@
             inherit ipsw python-env;
             inherit (pkgs) rcodesign;
           };
+          ios-sdk = pkgs.callPackage ./pkgs/ios-sdk.nix {
+            inherit buildShell;
+            inherit (tools) xtool open-apple-macros;
+            upstream = upstream-patched;
+          };
           apple-dev = pkgs.callPackage ./pkgs/fhs.nix {
             inherit mkFHSEnv;
+            flakeSrc = self.outPath;
             upstream = upstream-patched;
             # first on PATH: python-env's python3 has cryptography for upstream's tools
             tools = [ python-env tools.xtool ipsw pkgs.rcodesign ];
           };
         in
         {
-          inherit swift ipsw python-env upstream-patched apple-dev;
+          inherit swift ipsw python-env upstream-patched apple-dev ios-sdk;
           inherit (tools) xtool open-apple-macros actool;
           apple-dev-build = buildShell;
           usbmuxd = pkgs.callPackage ./pkgs/usbmuxd-service.nix { };
