@@ -71,9 +71,9 @@ path (`/usr/bin/touch` is compiled in; `/bin/cp`, `/usr/bin/sed` are in its
 specs). The toolchain and the tools are ordinary Nix binaries. Nix builds do
 not use bubblewrap.
 
-Linux Swift code also builds outside `apple-dev`:
-`SDKROOT=$(nix build --print-out-paths github:m9tdev/nix-apple-dev#swift)/sysroot swiftc …`
-(with SwiftPM, add `--build-system native`).
+Plain Swift code for Linux also builds outside `apple-dev`:
+`SDKROOT=$(nix build --print-out-paths github:m9tdev/nix-apple-dev#swift)/sysroot swiftc …`.
+SwiftPM packages with C targets need `apple-dev` (C files do not get `SDKROOT`).
 
 ## Set up the SDK (one time per host)
 
