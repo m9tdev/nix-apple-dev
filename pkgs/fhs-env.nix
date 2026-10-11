@@ -1,7 +1,6 @@
 # An FHS environment shaped like the Ubuntu 24.04 setup that upstream tested
-# (docs/DISTROS.md), with Swift 6.4 first on PATH. Two are made from this:
-# apple-dev-build (builds the Nix packages of the tools, in the build sandbox)
-# and apple-dev (the user environment, with those tools on PATH).
+# (docs/DISTROS.md), with Swift 6.4 first on PATH: the swift.org toolchain is
+# a prebuilt Ubuntu binary. The tools themselves are ordinary Nix packages.
 #   NAME                 interactive shell
 #   NAME CMD ARGS...     run one command
 { lib, callPackage, buildFHSEnv, writeShellScript, writeShellScriptBin, swift }:

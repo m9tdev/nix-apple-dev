@@ -1,5 +1,5 @@
 {
-  description = "Build and run iOS apps on NixOS (omarchy-apple-dev toolchain in an FHS environment)";
+  description = "Build, sign and install iOS apps on NixOS without a Mac (packages omarchy-apple-dev)";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -49,19 +49,14 @@
         let
           swift = pkgs.callPackage ./pkgs/swift.nix { };
           mkFHSEnv = pkgs.callPackage ./pkgs/fhs-env.nix { inherit swift; };
-          buildShell = mkFHSEnv { name = "apple-dev-build"; };
           mkSwiftPM = pkgs.callPackage ./pkgs/swiftpm.nix { };
-          tools = import ./pkgs/tools.nix {
-            inherit (pkgs) lib fetchFromGitHub;
-            inherit mkSwiftPM buildShell upstream;
-          };
+          tools = pkgs.callPackage ./pkgs/tools.nix { inherit mkSwiftPM upstream; };
           ipsw = pkgs.callPackage ./pkgs/ipsw.nix { };
           python-env = pkgs.callPackage ./pkgs/python.nix {
             inherit pyproject-nix uv2nix pyproject-build-systems;
           };
           upstream-patched = pkgs.callPackage ./pkgs/upstream.nix { src = upstream; };
           ios-sdk = pkgs.callPackage ./pkgs/ios-sdk.nix {
-            inherit buildShell;
             inherit (tools) xtool open-apple-macros actool;
             upstream = upstream-patched;
           };
@@ -76,7 +71,6 @@
         {
           inherit swift ipsw python-env upstream-patched apple-dev ios-sdk;
           inherit (tools) xtool open-apple-macros actool;
-          apple-dev-build = buildShell;
           usbmuxd = pkgs.callPackage ./pkgs/usbmuxd-service.nix { };
           default = apple-dev;
         });

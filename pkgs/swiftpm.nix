@@ -1,20 +1,23 @@
-# Build a SwiftPM package offline with the Swift 6.4 toolchain, inside the
-# apple-dev FHS environment (bubblewrap runs nested in the Nix build sandbox).
+# Build a SwiftPM package offline with nixpkgs' Swift.
 #
 # Dependencies come from a lock file made by scripts/swiftpm-lock.py. They are
 # put in SwiftPM's "edited" mode under Packages/ (the way nixpkgs' swiftpm2nix
 # vendors), so SwiftPM does no git or network work. Binary artifacts go to
 # .build/artifacts, where SwiftPM would download them.
-{ lib, stdenvNoCC, fetchFromGitHub, fetchurl, unzip }:
+#
+# The tools built here (xtool, the macro server, actool) are host tools: they
+# do not need the Swift 6.4 toolchain that apps are built with, so they are
+# ordinary Nix binaries that run without the FHS environment.
+{ lib, swiftPackages, fetchFromGitHub, fetchurl, unzip, pkg-config }:
 
 { pname
 , version
 , src
 , lock                    # path to pkgs/locks/<name>.json
-, buildShell              # the FHS env to run swift in (apple-dev-build)
+, product                 # the SwiftPM product to build and install
 , packagePath ? "."       # the package inside src
 , swiftBuildFlags ? [ ]
-, installPhase
+, systemLibraries ? [ ]   # C libraries for `.systemLibrary` targets
 , ...
 }@args:
 
@@ -46,15 +49,25 @@ let
       }) locked.artifacts;
     };
   });
+
+  # `.systemLibrary` targets without pkg-config include <header.h> from the
+  # system include path; NixOS has none, so name the paths.
+  flags = [ "-c" "release" "--product" product ]
+    ++ lib.concatMap (p: [
+      "-Xcc" "-isystem" "-Xcc" "${lib.getDev p}/include"
+      "-Xlinker" "-L${lib.getLib p}/lib"
+    ]) systemLibraries
+    ++ swiftBuildFlags;
 in
-stdenvNoCC.mkDerivation (removeAttrs args [ "lock" "buildShell" "packagePath" "swiftBuildFlags" ] // {
-  nativeBuildInputs = [ unzip ] ++ (args.nativeBuildInputs or [ ]);
+swiftPackages.stdenv.mkDerivation (removeAttrs args [ "lock" "product" "packagePath" "swiftBuildFlags" "systemLibraries" ] // {
+  nativeBuildInputs = [ swiftPackages.swift swiftPackages.swiftpm unzip pkg-config ]
+    ++ (args.nativeBuildInputs or [ ]);
+  buildInputs = systemLibraries ++ (args.buildInputs or [ ]);
 
   configurePhase = ''
     runHook preConfigure
     cd ${packagePath}
-    export HOME=$TMPDIR/home
-    mkdir -p $HOME .build/artifacts Packages
+    mkdir -p .build/artifacts Packages
     ${lib.concatMapStrings (d: ''
       ln -s ${d.src} Packages/${d.subpath}
     '') sources}
@@ -69,16 +82,24 @@ stdenvNoCC.mkDerivation (removeAttrs args [ "lock" "buildShell" "packagePath" "s
 
   buildPhase = ''
     runHook preBuild
-    ${buildShell}/bin/apple-dev-build swift build -c release --skip-update \
-      ${lib.escapeShellArgs swiftBuildFlags}
-    # For installPhase: where this build configuration put its products.
-    swiftpmBinPath=$(${buildShell}/bin/apple-dev-build swift build -c release --skip-update \
-      ${lib.escapeShellArgs swiftBuildFlags} --show-bin-path)
+    swift build ${lib.escapeShellArgs flags}
     runHook postBuild
   '';
 
-  inherit installPhase;
+  # The product, and what it loads from its own directory at run time
+  # (shared libraries, resource bundles).
+  installPhase = ''
+    runHook preInstall
+    bin=$(swift build ${lib.escapeShellArgs flags} --show-bin-path)
+    mkdir -p $out/libexec/${product} $out/bin
+    cp -a "$bin/${product}" $out/libexec/${product}/
+    for f in "$bin"/*.so "$bin"/*.resources; do
+      [ -e "$f" ] && cp -a "$f" $out/libexec/${product}/
+    done
+    ln -s $out/libexec/${product}/${product} $out/bin/${product}
+    runHook postInstall
+  '';
 
-  dontFixup = true;
   passthru = (args.passthru or { }) // { inherit sources; };
+  meta = { mainProgram = product; platforms = lib.platforms.linux; } // (args.meta or { });
 })

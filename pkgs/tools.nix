@@ -1,22 +1,9 @@
 # The tools upstream's installer builds with SwiftPM in $HOME, built by Nix
-# instead (same pinned revisions as upstream install-toolchain.sh).
-{ lib, fetchFromGitHub, mkSwiftPM, buildShell, upstream }:
+# with nixpkgs' Swift instead (same pinned revisions as upstream
+# install-toolchain.sh). They run on the host, with or without apple-dev.
+{ fetchFromGitHub, mkSwiftPM, upstream, libimobiledevice, libplist, libusbmuxd
+, libimobiledevice-glue, openssl, xz, zlib, bzip2 }:
 
-let
-  # Copy a SwiftPM release product and what it loads at run time (shared
-  # libraries and resource bundles next to it; it finds them by $ORIGIN).
-  installProduct = product: ''
-    runHook preInstall
-    bin=$swiftpmBinPath
-    mkdir -p $out/libexec/${product} $out/bin
-    cp -a "$bin/${product}" $out/libexec/${product}/
-    for f in "$bin"/*.so "$bin"/*.resources; do
-      [ -e "$f" ] && cp -a "$f" $out/libexec/${product}/
-    done
-    ln -s $out/libexec/${product}/${product} $out/bin/${product}
-    runHook postInstall
-  '';
-in
 {
   # xtool 1.20.1 plus upstream's unreleased fixes (install-toolchain.sh XTOOL_SHA).
   xtool = mkSwiftPM {
@@ -29,12 +16,18 @@ in
       hash = "sha256-eX262Vjsvez+kqZFIA2UFopmJjwNquMZfZ0fX2bw7lY=";
     };
     lock = ./locks/xtool.json;
-    inherit buildShell;
+    product = "xtool";
     # `xtool sdk build` without network: local toolset and macro server
     patches = [ ../patches/xtool-offline-sdk-build.patch ];
-    swiftBuildFlags = [ "--product" "xtool" ];
-    installPhase = installProduct "xtool";
-    meta.mainProgram = "xtool";
+    postPatch = ''
+      grep -q XTOOL_TOOLSET_TARBALL Sources/XToolSupport/SDKBuilder.swift
+      grep -q XTOOL_OAM_SERVER Sources/XToolSupport/SDKBuilder.swift
+    '';
+    systemLibraries = [
+      libimobiledevice libplist libusbmuxd libimobiledevice-glue openssl
+      xz zlib bzip2 # unxip's lzma and zlib targets
+    ];
+    meta.description = "Cross-platform Xcode replacement (xtool-org/xtool, with omarchy-apple-dev's fixes)";
   };
 
   # The Darwin macro plugin server with SwiftData and #Preview macros
@@ -49,10 +42,8 @@ in
       hash = "sha256-2a3jhdvpHNKtzIC5mTjD5pRxV1r9wA/7RD8GfnDLEZE=";
     };
     lock = ./locks/oam.json;
-    inherit buildShell;
-    swiftBuildFlags = [ "--build-system" "native" "--static-swift-stdlib" "--product" "OpenAppleMacrosServer" ];
-    installPhase = installProduct "OpenAppleMacrosServer";
-    meta.mainProgram = "OpenAppleMacrosServer";
+    product = "OpenAppleMacrosServer";
+    meta.description = "Macro plugin server for Apple's SwiftUI, SwiftData and #Preview macros";
   };
 
   # Linux actool (asset catalogs) from upstream tools/darwin-tools.
@@ -62,9 +53,7 @@ in
     src = upstream;
     packagePath = "tools/darwin-tools";
     lock = ./locks/darwin-tools.json;
-    inherit buildShell;
-    swiftBuildFlags = [ "--product" "actool" ];
-    installPhase = installProduct "actool";
-    meta.mainProgram = "actool";
+    product = "actool";
+    meta.description = "Asset catalog compiler for Linux (omarchy-apple-dev tools/darwin-tools)";
   };
 }

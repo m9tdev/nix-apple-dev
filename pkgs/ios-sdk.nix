@@ -8,7 +8,7 @@
 # sdk-finish.py (upstream's install_darwin_tools / install_oam: actool,
 # ibtool, momc, the macro server, the plist/JSON defaults). Output: the
 # registered bundle, ready to link into ~/.swiftpm/swift-sdks/.
-{ lib, stdenvNoCC, requireFile, fetchurl, xar, pbzx, cpio, python3, buildShell, xtool, open-apple-macros, actool, upstream }:
+{ lib, stdenvNoCC, requireFile, fetchurl, xar, pbzx, cpio, python3, swift, xtool, open-apple-macros, actool, upstream }:
 
 let
   xcodeVersion = "27.0";
@@ -36,7 +36,6 @@ let
     "./Xcode.app/Contents/Frameworks/SiriSSUKitModel.framework/Versions/A/Resources/*"
   ];
 
-  run = "${buildShell}/bin/apple-dev-build";
 
   # xtool's prebuilt Linux toolset for Apple targets (ld64.lld, libtool, …);
   # xtool would download it during `sdk build` (SDKBuilder.darwinToolsVersion).
@@ -51,7 +50,8 @@ stdenvNoCC.mkDerivation {
   src = xip;
   dontUnpack = true;
 
-  nativeBuildInputs = [ xar pbzx cpio python3 ];
+  # swift: `xtool sdk install` runs `swift sdk install` (any recent Swift)
+  nativeBuildInputs = [ xar pbzx cpio python3 swift xtool ];
 
   # No network in the sandbox: xtool (patched, see patch-xtool.py) reads these.
   XTOOL_TOOLSET_TARBALL = toolset;
@@ -72,8 +72,8 @@ stdenvNoCC.mkDerivation {
 
     # xtool unpacks the whole xip to a temporary stage (about 10 GB) and
     # keeps only what its SDKBuilder.wanted list names.
-    ${run} ${xtool}/bin/xtool sdk build "$src" "$TMPDIR/sdk"
-    ${run} ${xtool}/bin/xtool sdk install "$TMPDIR/sdk/darwin.xtoolsdk"
+    xtool sdk build "$src" "$TMPDIR/sdk"
+    xtool sdk install "$TMPDIR/sdk/darwin.xtoolsdk"
 
     bundle=$HOME/.swiftpm/swift-sdks/darwin.artifactbundle
     test -f "$bundle/info.json"

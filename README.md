@@ -11,7 +11,7 @@ for Nix: Swift 6.4, xtool, the iOS SDK from `Xcode.xip`, and pymobiledevice3.
 | Part | Where it comes from |
 |---|---|
 | Swift 6.4 toolchain | swift.org Ubuntu 24.04 build, pinned by hash, run in an FHS environment |
-| xtool, OpenAppleMacrosServer, actool | built by Nix from source; SwiftPM dependencies pinned in `pkgs/locks/` |
+| xtool, OpenAppleMacrosServer, actool | built by Nix from source with nixpkgs' Swift (ordinary Nix binaries); SwiftPM dependencies pinned in `pkgs/locks/` |
 | pymobiledevice3 11.27, cryptography | built by Nix from `python/uv.lock` (uv2nix) |
 | rcodesign | nixpkgs |
 | ipsw 3.1.736 | the release binary, pinned by hash (the source cannot build: see `pkgs/ipsw.nix`) |
@@ -65,8 +65,8 @@ sudo nix run github:m9tdev/nix-apple-dev#usbmuxd     # USB service; run again af
 systemd, it starts the transient unit `apple-dev-usbmuxd`. Without systemd, it
 runs in the foreground.
 
-The Nix build sandbox must allow user namespaces, because the tools are built
-inside the FHS environment with bubblewrap. NixOS allows them by default.
+Running `apple-dev` needs unprivileged user namespaces (bubblewrap), as every
+FHS environment does. Nix builds do not: no package is built inside it.
 
 ## Set up the SDK (one time per host)
 
@@ -120,6 +120,9 @@ With a free Apple ID: run `xtool auth`, then `xtool dev run` in the project dire
 - `patches/xtool-offline-sdk-build.patch` lets `xtool sdk build` run offline (the
   toolset and the macro server come from Nix). Xcode.xip stores many files in Apple's
   compressed form (decmpfs), so the SDK must be unpacked by xtool, not by cpio.
+- Why an FHS environment at all: the swift.org Swift 6.4 toolchain (needed to
+  build apps against the Xcode 27 SDK) is a prebuilt Ubuntu binary. nixpkgs has
+  Swift 6.2.4, which is enough for the tools but not for the apps.
 - Update a SwiftPM lock: resolve the package inside `apple-dev`, then run
   `scripts/swiftpm-lock.py .build/workspace-state.json > pkgs/locks/NAME.json`.
 - x86_64-linux only for now.
