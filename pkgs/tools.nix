@@ -5,6 +5,12 @@
   fetchFromGitHub,
   mkSwiftPM,
   upstream,
+  lib,
+  makeWrapper,
+  writeShellScriptBin,
+  librsvg,
+  poppler-utils,
+  libheif,
   libimobiledevice,
   libplist,
   libusbmuxd,
@@ -71,6 +77,21 @@
     packagePath = "tools/darwin-tools";
     lock = ./locks/darwin-tools.json;
     product = "actool";
+    # AssetKit runs these through PATH: rsvg-convert (SVG, Icon Composer
+    # layers), pdfinfo/pdftocairo (PDF), heif-convert (HEIC; libheif 1.16
+    # renamed it heif-dec, same arguments).
+    nativeBuildInputs = [ makeWrapper ];
+    postInstall = ''
+      rm $out/bin/actool
+      makeWrapper $out/libexec/actool/actool $out/bin/actool --prefix PATH : ${
+        lib.makeBinPath [
+          librsvg
+          poppler-utils
+          libheif.bin
+          (writeShellScriptBin "heif-convert" ''exec ${libheif.bin}/bin/heif-dec "$@"'')
+        ]
+      }
+    '';
     meta.description = "Asset catalog compiler for Linux (omarchy-apple-dev tools/darwin-tools)";
   };
 }
