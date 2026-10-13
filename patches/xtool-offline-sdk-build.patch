@@ -1,6 +1,6 @@
 diff -ru a/Sources/XToolSupport/SDKBuilder.swift b/Sources/XToolSupport/SDKBuilder.swift
---- a/Sources/XToolSupport/SDKBuilder.swift	2026-10-13 12:12:08.945066218 +0000
-+++ b/Sources/XToolSupport/SDKBuilder.swift	2026-10-13 12:12:08.949066273 +0000
+--- a/Sources/XToolSupport/SDKBuilder.swift	2026-10-13 12:52:57.121609449 +0000
++++ b/Sources/XToolSupport/SDKBuilder.swift	2026-10-13 12:52:57.127609532 +0000
 @@ -253,14 +253,7 @@
      }
  
@@ -17,7 +17,7 @@ diff -ru a/Sources/XToolSupport/SDKBuilder.swift b/Sources/XToolSupport/SDKBuild
          @Dependency(\.httpClient) var httpClient
          let url = URL(string: """
          https://github.com/xtool-org/darwin-tools-linux-llvm/releases/download/\
-@@ -299,6 +292,28 @@
+@@ -299,6 +292,30 @@
              try await execution.standardInputWriter.finish()
          }
          .checkSuccess()
@@ -32,9 +32,11 @@ diff -ru a/Sources/XToolSupport/SDKBuilder.swift b/Sources/XToolSupport/SDKBuild
 +        )
 +
 +        if let local = ProcessInfo.processInfo.environment["XTOOL_TOOLSET_TARBALL"] {
++            // absolute: tar runs in toolsetDir, where a relative path would point
++            let tarball = URL(fileURLWithPath: local).standardizedFileURL.path
 +            try await Subprocess.run(
 +                .name("tar"),
-+                arguments: ["xzf", local],
++                arguments: ["xzf", tarball],
 +                workingDirectory: FilePath(toolsetDir),
 +                output: .discarded,
 +                error: .discarded,
@@ -46,7 +48,7 @@ diff -ru a/Sources/XToolSupport/SDKBuilder.swift b/Sources/XToolSupport/SDKBuild
  
          // swift-build assumes we have an Apple-flavored librarian for Apple platforms
          // (https://github.com/swiftlang/swift-build/blob/b2433e74e/Sources/SWBCore/SpecImplementations/Tools/LinkerTools.swift#L1735)
-@@ -405,6 +420,15 @@
+@@ -405,6 +422,15 @@
      }
  
      private func installMacros(in output: URL) async throws {
@@ -62,7 +64,7 @@ diff -ru a/Sources/XToolSupport/SDKBuilder.swift b/Sources/XToolSupport/SDKBuild
          @Dependency(\.httpClient) var httpClient
          let url = URL(string: """
          https://github.com/xtool-org/OpenAppleMacros/releases/download/\
-@@ -419,7 +443,6 @@
+@@ -419,7 +445,6 @@
          case .unknown: nil
          }
  
