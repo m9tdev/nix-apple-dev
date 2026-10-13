@@ -77,6 +77,14 @@
     packagePath = "tools/darwin-tools";
     lock = ./locks/darwin-tools.json;
     product = "actool";
+    # AssetKit with the macOS Icon Composer layout (m9tdev/AssetKit#1, on top
+    # of the omarchy/mac-icon pin): without it macOS shows the generic icon
+    # for an .icon app icon. Back to upstream's pin once it lands there.
+    postPatch = ''
+      substituteInPlace tools/darwin-tools/Package.swift --replace-fail \
+        '.package(url: "https://github.com/joshuaswarren/AssetKit", revision: "705ce2f2b797835cf4bac65e0dff1e9ca37ba0bf")' \
+        '.package(url: "https://github.com/m9tdev/AssetKit", revision: "48e4089fd34278285c525786e285bb6dfbd133ad")'
+    '';
     # AssetKit runs these through PATH: rsvg-convert (SVG, Icon Composer
     # layers), pdfinfo/pdftocairo (PDF), heif-convert (HEIC; libheif 1.16
     # renamed it heif-dec, same arguments).

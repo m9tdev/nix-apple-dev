@@ -5,13 +5,13 @@
       "packageRef": {
         "identity": "assetkit",
         "kind": "remoteSourceControl",
-        "location": "https://github.com/joshuaswarren/AssetKit",
+        "location": "https://github.com/m9tdev/AssetKit",
         "name": "AssetKit"
       },
-      "owner": "joshuaswarren",
+      "owner": "m9tdev",
       "repo": "AssetKit",
-      "rev": "705ce2f2b797835cf4bac65e0dff1e9ca37ba0bf",
-      "hash": "sha256-FV2xDPU7AcQKGFEeGH63OQIdewYzwcjJQ921SzTY7uM=",
+      "rev": "48e4089fd34278285c525786e285bb6dfbd133ad",
+      "hash": "sha256-uwNfTo093/JPrdaLBPHBjFgJjspiwZvQkwqNc8Omyr0=",
       "version": null
     },
     {

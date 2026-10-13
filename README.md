@@ -132,6 +132,9 @@ With a free Apple ID: run `xtool auth`, then `xtool dev run` in the project dire
   swift.org build. The tools are built with nixpkgs' Swift 6.2.4.
 - Update a SwiftPM lock: resolve the package inside `apple-dev`, then run
   `scripts/swiftpm-lock.py .build/workspace-state.json > pkgs/locks/NAME.json`.
+- `actool` builds against [m9tdev/AssetKit](https://github.com/m9tdev/AssetKit/pull/1)
+  until upstream has its fix: macOS showed the generic app icon for an Icon
+  Composer `.icon` (it was compiled in the iOS catalog layout).
 - x86_64-linux only for now.
 - Apple's Xcode licence allows its use only on Apple-branded computers.
   You decide if that matters for your use.
