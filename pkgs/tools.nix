@@ -83,7 +83,7 @@
     postPatch = ''
       substituteInPlace tools/darwin-tools/Package.swift --replace-fail \
         '.package(url: "https://github.com/joshuaswarren/AssetKit", revision: "705ce2f2b797835cf4bac65e0dff1e9ca37ba0bf")' \
-        '.package(url: "https://github.com/m9tdev/AssetKit", revision: "48e4089fd34278285c525786e285bb6dfbd133ad")'
+        '.package(url: "https://github.com/m9tdev/AssetKit", revision: "e6ae596113987cacf30c0f31829b8a4785b961df")'
     '';
     # AssetKit runs these through PATH: rsvg-convert (SVG, Icon Composer
     # layers), pdfinfo/pdftocairo (PDF), heif-convert (HEIC; libheif 1.16
