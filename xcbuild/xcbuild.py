@@ -18,10 +18,20 @@ usage: xcbuild.py --workspace-dir ios [--configuration Release] [--target T]
 import argparse, glob, hashlib, json, os, plistlib, re, shlex, shutil, struct, subprocess, sys, time
 from concurrent.futures import ThreadPoolExecutor
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from xcode_version import XCODE_BUILD, XCODE_VERSION, XCODE_VERSION_NUMBER
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 RUBY = os.environ.get("XCBUILD_RUBY", "ruby")
 JOBS = int(os.environ.get("XCBUILD_JOBS", os.cpu_count() or 4))
 VERBOSE = bool(os.environ.get("XCBUILD_VERBOSE"))
+# Product types this tool builds ("" is an aggregate target: script phases only), and the
+# build phases it runs. Frameworks (use_frameworks!), app extensions and Copy Files
+# phases are not supported: the build stops instead of leaving them out.
+PRODUCT_TYPES = ("", "com.apple.product-type.library.static", "com.apple.product-type.bundle",
+                 "com.apple.product-type.application")
+PHASES = ("PBXShellScriptBuildPhase", "PBXSourcesBuildPhase", "PBXHeadersBuildPhase",
+          "PBXResourcesBuildPhase", "PBXFrameworksBuildPhase")
 
 def log(*a):
     print("[xcbuild]", *a, flush=True)
@@ -36,7 +46,9 @@ def parse_xcconfig(path, out=None, seen=None):
     if path in seen or not os.path.exists(path):
         return out
     seen.add(path)
-    for raw in open(path, encoding="utf-8", errors="replace"):
+    with open(path, encoding="utf-8", errors="replace") as f:
+        lines = f.read().splitlines()
+    for raw in lines:
         line = raw.strip()
         m = re.match(r'#include\??\s+"(.*)"', line)
         if m:
@@ -231,7 +243,10 @@ class Build:
         self.module_cache = os.path.join(self.derived, "ModuleCache.noindex")
         # Xcode's toolchain usr/include (<swift/bridging>: SWIFT_COMPUTED_PROPERTY, SWIFT_NAME...)
         # is on every compile's search path; the SDK bundle has none, swift.org's toolchain has it.
-        self.toolchain_include = os.path.normpath(os.path.join(os.path.dirname(os.path.realpath(shutil.which("swiftc"))), "../include"))
+        swiftc = shutil.which("swiftc")
+        if not swiftc:
+            raise SystemExit("xcbuild: swiftc is not on PATH; run apple-dev-xcbuild inside apple-dev")
+        self.toolchain_include = os.path.normpath(os.path.join(os.path.dirname(os.path.realpath(swiftc)), "../include"))
         self.projects = []
         self.targets = {}
         self.done = set()
@@ -243,13 +258,22 @@ class Build:
                 self.all_headers.setdefault(os.path.basename(f), f)
 
     def load(self, proj):
-        cache = os.path.join(self.derived, "projects", os.path.basename(proj) + ".json")
+        cache = os.path.join(self.derived, "projects", "%s.%s.json" % (os.path.basename(proj), self.config))
         os.makedirs(os.path.dirname(cache), exist_ok=True)
         pbx = os.path.join(proj, "project.pbxproj")
         if not os.path.exists(cache) or os.path.getmtime(cache) < os.path.getmtime(pbx):
-            with open(cache, "w") as f:
-                subprocess.run([RUBY, os.path.join(HERE, "dump-project.rb"), proj, self.config], stdout=f, check=True)
-        d = json.load(open(cache))
+            tmp = cache + ".tmp"
+            try:
+                with open(tmp, "w") as f:
+                    r = subprocess.run([RUBY, os.path.join(HERE, "dump-project.rb"), proj, self.config], stdout=f)
+                if r.returncode != 0:
+                    raise SystemExit("xcbuild: reading %s failed (dump-project.rb exited %d)" % (proj, r.returncode))
+                os.replace(tmp, cache)
+            finally:
+                if os.path.exists(tmp):
+                    os.remove(tmp)
+        with open(cache) as f:
+            d = json.load(f)
         self.projects.append(d)
         for t in d["targets"]:
             t["project"] = d
@@ -298,8 +322,8 @@ class Build:
             "USE_HEADERMAP": "YES", "HEADERMAP_INCLUDES_PROJECT_HEADERS": "YES",
             "ALWAYS_SEARCH_USER_PATHS": "NO", "ENABLE_BITCODE": "NO", "CODE_SIGNING_ALLOWED": "NO",
             "CODE_SIGNING_REQUIRED": "NO", "EXPANDED_CODE_SIGN_IDENTITY": "", "COMPILER_INDEX_STORE_ENABLE": "NO",
-            "XCODE_VERSION_MAJOR": "2700", "XCODE_VERSION_MINOR": "2700", "XCODE_VERSION_ACTUAL": "2700",
-            "XCODE_PRODUCT_BUILD_VERSION": "27A266a", "DEPLOYMENT_TARGET_SETTING_NAME": "IPHONEOS_DEPLOYMENT_TARGET",
+            "XCODE_VERSION_MAJOR": XCODE_VERSION_NUMBER, "XCODE_VERSION_MINOR": XCODE_VERSION_NUMBER,
+            "XCODE_VERSION_ACTUAL": XCODE_VERSION_NUMBER, "XCODE_PRODUCT_BUILD_VERSION": XCODE_BUILD, "DEPLOYMENT_TARGET_SETTING_NAME": "IPHONEOS_DEPLOYMENT_TARGET",
             "IPHONEOS_DEPLOYMENT_TARGET": "15.1", "TARGETED_DEVICE_FAMILY": "1,2", "VALID_ARCHS": "arm64",
             "SWIFT_VERSION": "5.0", "SWIFT_PLATFORM_TARGET_PREFIX": "ios", "LLVM_TARGET_TRIPLE_VENDOR": "apple",
             "LLVM_TARGET_TRIPLE_OS_VERSION": "ios$(IPHONEOS_DEPLOYMENT_TARGET)",
@@ -752,7 +776,7 @@ class Build:
             d["UIDeviceFamily"] = [int(x) for x in s.get("TARGETED_DEVICE_FAMILY", "1").split(",") if x.strip()]
             d["UIRequiredDeviceCapabilities"] = d.get("UIRequiredDeviceCapabilities") or ["arm64"]
             d.update({"DTPlatformName": "iphoneos", "DTPlatformVersion": s.get("SDK_VERSION"),
-                      "DTSDKName": s.get("SDK_NAME"), "DTSDKBuild": "", "DTXcode": "2700", "DTXcodeBuild": "27A266a",
+                      "DTSDKName": s.get("SDK_NAME"), "DTSDKBuild": "", "DTXcode": XCODE_VERSION_NUMBER, "DTXcodeBuild": XCODE_BUILD,
                       "DTCompiler": "com.apple.compilers.llvm.clang.1_0", "DTPlatformBuild": "", "BuildMachineOSBuild": ""})
         else:
             d.setdefault("CFBundlePackageType", "BNDL")
@@ -770,6 +794,21 @@ class Build:
         os.makedirs(dest, exist_ok=True)
         plistlib.dump(d, open(os.path.join(dest, "Info.plist"), "wb"), fmt=plistlib.FMT_BINARY)
         return d
+
+    def check_supported(self, names):
+        """Stop before building if a target needs what this tool can't build yet."""
+        bad = []
+        for n in names:
+            t = self.targets[n]
+            if t["type"] not in PRODUCT_TYPES:
+                bad.append("%s: product type %s" % (n, t["type"]))
+            for ph in t["phases"]:
+                if ph["isa"] not in PHASES and ph.get("files"):
+                    bad.append("%s: %s %s" % (n, ph["isa"], ph.get("name") or ""))
+        if bad:
+            raise SystemExit("xcbuild: not supported (static libraries, resource bundles and the app only;"
+                             " no use_frameworks!, app extensions or Copy Files phases):\n  "
+                             + "\n  ".join(b.rstrip() for b in bad))
 
     def build_target(self, name):
         t = self.targets[name]
@@ -801,8 +840,6 @@ class Build:
                 self.link_app(t, s, objs, ph, wrap)
         if wrap and (typ.endswith("bundle") or typ.endswith("application")):
             self.info_plist(t, s, wrap)
-        if typ.endswith("library.static") and not any(ph["isa"] == "PBXSourcesBuildPhase" for ph in t["phases"]):
-            pass
         log("  done %s in %.1fs" % (name, time.time() - t0))
 
     def compile_assets(self, t, s, wrap):
@@ -933,6 +970,7 @@ def main():
         for n in order:
             print(n, b.targets[n]["type"])
         return
+    b.check_supported(order)
     t0 = time.time()
     for n in order:
         b.build_target(n)

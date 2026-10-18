@@ -1,7 +1,25 @@
 """Unit tests for xcbuild.py: build settings like Xcode, header maps clang can read."""
-import os, struct, sys, tempfile, unittest
+import os, plistlib, struct, subprocess, sys, tempfile, unittest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import xcbuild as x
+
+BIN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bin")
+
+
+def write(path, data):
+    with open(path, "wb" if isinstance(data, bytes) else "w") as f:
+        f.write(data)
+
+
+def read(path):
+    with open(path, "rb") as f:
+        return f.read()
+
+
+def tool(name, *args):
+    """Run a stand-in from bin/ with this Python (the build sandbox has no /usr/bin/env)."""
+    return subprocess.run([sys.executable, os.path.join(BIN, name)] + list(args),
+                          capture_output=True, text=True)
 
 
 class Settings(unittest.TestCase):
@@ -26,16 +44,16 @@ class Settings(unittest.TestCase):
 
     def test_xcconfig(self):
         with tempfile.TemporaryDirectory() as d:
-            open(os.path.join(d, "base.xcconfig"), "w").write("A = 1 // comment\n")
-            open(os.path.join(d, "t.xcconfig"), "w").write(
-                '#include "base.xcconfig"\nB = "http://x" $(A)\nC[sdk=iphoneos*] = dev\n')
+            write(os.path.join(d, "base.xcconfig"), "A = 1 // comment\n")
+            write(os.path.join(d, "t.xcconfig"),
+                  '#include "base.xcconfig"\nB = "http://x" $(A)\nC[sdk=iphoneos*] = dev\n')
             items = x.parse_xcconfig(os.path.join(d, "t.xcconfig"))
             self.assertEqual(items, [("A", "", "1"), ("B", "", '"http://x" $(A)'), ("C", "[sdk=iphoneos*]", "dev")])
 
 
 class HeaderMap(unittest.TestCase):
     def lookup(self, path, key):
-        d = open(path, "rb").read()
+        d = read(path)
         magic, ver, _, soff, n, nb, _ = struct.unpack("<IHHIIII", d[:24])
         self.assertEqual(d[:4], b"pamh")  # clang reads the magic as a native uint32
         def string(o):
@@ -59,6 +77,88 @@ class HeaderMap(unittest.TestCase):
                 self.assertEqual(self.lookup(os.path.join(d, "t.hmap"), k), v)
             self.assertEqual(self.lookup(os.path.join(d, "t.hmap"), "anymap.HPP"), "/src/cpp/core/AnyMap.hpp")
             self.assertIsNone(self.lookup(os.path.join(d, "t.hmap"), "missing.h"))
+
+
+def macho(cputype):
+    """A thin 64-bit Mach-O header, little-endian as on disk."""
+    return struct.pack("<IIiIIII", 0xfeedfacf, cputype, 0, 6, 0, 0, 0) + b"\0" * 100
+
+
+class Lipo(unittest.TestCase):
+    def test_thin(self):
+        with tempfile.TemporaryDirectory() as d:
+            f, out = os.path.join(d, "bin"), os.path.join(d, "out")
+            write(f, macho(0x0100000c))
+            self.assertEqual(tool("lipo", "-archs", f).stdout, "arm64\n")
+            self.assertEqual(tool("lipo", "-info", f).stdout, "Non-fat file: %s is architecture: arm64\n" % f)
+            self.assertEqual(tool("lipo", "-verify_arch", f, "arm64").returncode, 0)
+            self.assertNotEqual(tool("lipo", "-verify_arch", f, "x86_64").returncode, 0)
+            self.assertEqual(tool("lipo", "-thin", "arm64", f, "-output", out).returncode, 0)
+            self.assertEqual(read(out), read(f))
+
+    def test_fat(self):
+        with tempfile.TemporaryDirectory() as d:
+            f, out = os.path.join(d, "fat"), os.path.join(d, "out")
+            x86, arm = macho(0x01000007), macho(0x0100000c)
+            hdr = struct.pack(">II", 0xcafebabe, 2)
+            hdr += struct.pack(">IIIII", 0x01000007, 3, 4096, len(x86), 12)
+            hdr += struct.pack(">IIIII", 0x0100000c, 0, 8192, len(arm), 12)
+            write(f, hdr.ljust(4096, b"\0") + x86.ljust(4096, b"\0") + arm)
+            self.assertEqual(tool("lipo", "-archs", f).stdout, "x86_64 arm64\n")
+            self.assertEqual(tool("lipo", "-thin", "arm64", f, "-output", out).returncode, 0)
+            self.assertEqual(read(out), arm)
+            self.assertNotEqual(tool("lipo", "-thin", "armv7", f, "-output", out).returncode, 0)
+
+
+class Plutil(unittest.TestCase):
+    def test_convert_extract(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "Info.plist")
+            write(p, plistlib.dumps({"CFBundleName": "App", "N": [1, 2]}))
+            self.assertEqual(tool("plutil", "-convert", "binary1", p).returncode, 0)
+            self.assertEqual(read(p)[:8], b"bplist00")
+            self.assertEqual(tool("plutil", "-extract", "CFBundleName", "raw", p).stdout, "App\n")
+            self.assertEqual(tool("plutil", "-extract", "N.1", "raw", p).stdout, "2\n")
+            r = tool("plutil", "-convert", "json", "-o", "-", p)
+            self.assertEqual(r.stdout, '{"CFBundleName": "App", "N": [1, 2]}')
+            self.assertEqual(tool("plutil", "-lint", p).stdout, p + ": OK\n")
+
+
+class XcodeVersion(unittest.TestCase):
+    def test_xcodebuild_version(self):
+        r = tool("xcodebuild", "-version")
+        self.assertEqual(r.stdout, "Xcode %s\nBuild version %s\n" % (x.XCODE_VERSION, x.XCODE_BUILD))
+        self.assertNotEqual(tool("xcodebuild", "build").returncode, 0)
+
+    def test_number(self):
+        self.assertEqual(x.XCODE_VERSION_NUMBER, "%02d%s0" % tuple(int(n) for n in x.XCODE_VERSION.split(".")[:2]))
+
+
+class Supported(unittest.TestCase):
+    def build(self, targets):
+        b = x.Build.__new__(x.Build)
+        b.targets = {t["name"]: t for t in targets}
+        return b
+
+    def test_static_bundle_app(self):
+        b = self.build([{"name": "Pod", "type": "com.apple.product-type.library.static",
+                         "phases": [{"isa": "PBXSourcesBuildPhase", "files": [{"path": "a.m"}]}]},
+                        {"name": "App", "type": "com.apple.product-type.application",
+                         "phases": [{"isa": "PBXCopyFilesBuildPhase", "files": []}]}])
+        b.check_supported(["Pod", "App"])
+
+    def test_frameworks_extensions_copy_files(self):
+        b = self.build([{"name": "Pod", "type": "com.apple.product-type.framework", "phases": []},
+                        {"name": "Ext", "type": "com.apple.product-type.app-extension", "phases": []},
+                        {"name": "App", "type": "com.apple.product-type.application",
+                         "phases": [{"isa": "PBXCopyFilesBuildPhase", "name": "Embed", "files": [{"path": "x"}]}]}])
+        with self.assertRaises(SystemExit) as e:
+            b.check_supported(["Pod", "Ext", "App"])
+        msg = str(e.exception)
+        for part in ("Pod: product type com.apple.product-type.framework",
+                     "Ext: product type com.apple.product-type.app-extension",
+                     "App: PBXCopyFilesBuildPhase Embed"):
+            self.assertIn(part, msg)
 
 
 if __name__ == "__main__":

@@ -171,6 +171,11 @@
             ${pkgs.python3}/bin/python3 ${./xcbuild}/test_xcbuild.py
             touch $out
           '';
+          # Upstream ibtool's golden self-test, with this repo's ibtool patch applied.
+          ibtool-golden = pkgs.runCommand "ibtool-golden" { } ''
+            ${pkgs.python3}/bin/python3 ${p.upstream-patched}/tools/ibtool --self-test
+            touch $out
+          '';
           xtool-runs = pkgs.runCommand "xtool-runs" { } ''
             ${p.xtool}/bin/xtool --help | grep -q "Cross-platform Xcode replacement"
             touch $out

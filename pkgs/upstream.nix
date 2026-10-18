@@ -6,7 +6,7 @@
 #   template LaunchScreen.storyboard (label clipsSubviews/minimumFontSize, bold
 #   system font, a 1/3 multiplier constraint to the root view); the app shows
 #   that storyboard while JS starts. Unverified against Apple goldens, see the patch;
-#   the golden self-test still passes;
+#   the golden self-test still passes (checks.ibtool-golden);
 # - install-toolchain.sh is replaced: Nix builds every piece it installs.
 { stdenvNoCC, src }:
 

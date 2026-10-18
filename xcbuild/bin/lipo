@@ -3,7 +3,8 @@
 import struct, sys
 CPU = {0x0100000c: "arm64", 0x01000007: "x86_64", 12: "armv7", 7: "i386", 0x0200000c: "arm64_32"}
 def parse(p):
-    d = open(p, "rb").read()
+    with open(p, "rb") as f:
+        d = f.read()
     m = struct.unpack(">I", d[:4])[0]
     if m in (0xcafebabe, 0xcafebabf):
         n = struct.unpack(">I", d[4:8])[0]
@@ -17,7 +18,9 @@ def parse(p):
                 ct, st, off, size, al, _ = struct.unpack(">IIQQII", e)
             out.append((CPU.get(ct, hex(ct)), d[off:off + size], ct, st, al))
         return True, out
-    ct = struct.unpack("<I", d[4:8])[0] if m in (0xfeedfacf, 0xfeedface) else None
+    # A thin Mach-O is little-endian for arm64 and x86_64: its magic reads as feedfacf
+    # (64-bit) or feedface (32-bit) only when read little-endian, like the CPU type after it.
+    ct = struct.unpack("<I", d[4:8])[0] if struct.unpack("<I", d[:4])[0] in (0xfeedfacf, 0xfeedface) else None
     if ct is None and d[:8] == b"!<arch>\n":
         return False, [("arm64", d, 0x0100000c, 0, 0)]  # thin static archive: assume the target arch
     return False, [(CPU.get(ct, hex(ct or 0)), d, ct, 0, 0)]

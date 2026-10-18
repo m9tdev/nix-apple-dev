@@ -139,16 +139,23 @@ sign-dev.sh $app app.ipa && pymobiledevice3 apps install app.ipa
   `ios/build/xcbuild/failed/`, the last failed command in `last-failure.log`.
 - Release only, arm64 device only. The JS bundle is built by the project's own
   bundle script phase, so the phone needs no dev server.
+- Pods as static libraries only: no `use_frameworks!`. Framework targets, app
+  extensions and Copy Files phases aren't supported; the build stops with an
+  error naming them instead of leaving them out.
+- Node.js and `npx` come from the host: apple-dev doesn't include them.
 - macOS tools that pods and React Native call (`xcrun`, `xcodebuild -version`,
   `plutil`, `otool`, `lipo`, `ditto`, `codesign`) have small Linux stand-ins.
   Signing happens afterwards with `sign-dev.sh`.
 - Hermes: a pod's macOS `hermesc` is replaced by the npm `hermes-compiler`
-  Linux build, but only if both have the same version.
+  Linux build, but only if both have the same version. This changes `Pods/`:
+  `hermes-engine/destroot/bin/hermesc` is renamed to `hermesc.macos`, and a
+  symlink to the Linux build takes its place.
 - If the Linux ibtool can't compile a launch storyboard, the app gets a plain
   `UILaunchScreen`, and an icon set without images gives no icon, as in Xcode.
 - The Debug configuration isn't supported yet.
 - The ibtool patch for React Native's launch storyboard hasn't been compared
-  with Apple's ibtool output.
+  with Apple's ibtool output. The upstream golden self-test (`checks.ibtool-golden`)
+  still passes.
 
 ## Notes
 
