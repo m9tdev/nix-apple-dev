@@ -114,6 +114,42 @@ pymobiledevice3 developer dvt launch com.example.hello
 
 With a free Apple ID: run `xtool auth`, then `xtool dev run` in the project directory.
 
+## React Native, Expo and One apps (CocoaPods)
+
+SwiftPM can't build React Native's native modules: many mix Swift with
+ObjC++/C++ in one target. Here CocoaPods makes the usual Xcode workspace, and
+`apple-dev-xcbuild` builds it the way xcodebuild would. It resolves build
+settings from the projects and xcconfigs, writes Xcode's header maps,
+compiles Swift (with C++ interop for Nitro modules) and C/ObjC/C++, runs the
+pods' script phases, links with the SDK's lld, and bundles the app: Info.plist,
+actool, ibtool, the JS bundle as Hermes bytecode, and the embedded frameworks.
+
+```sh
+apple-dev                                   # the commands below run in here
+cd my-app && npx one prebuild --platform ios --no-install   # or: npx expo prebuild -p ios
+(cd ios && apple-dev-pod install)           # CocoaPods, with Linux stand-ins for xcrun & co.
+apple-dev-xcbuild --workspace-dir ios --bundle-id com.example.app   # Release, device
+app=ios/build/xcbuild/Build/Products/Release-iphoneos/*.app
+provision-dev.py --bundle-id com.example.app --udid <UDID>
+sign-dev.sh $app app.ipa && pymobiledevice3 apps install app.ipa
+```
+
+- `--target T` builds one target and its dependencies, `--only` skips the
+  dependencies, `--list` prints the build order. Logs of failed compiles are in
+  `ios/build/xcbuild/failed/`, the last failed command in `last-failure.log`.
+- Release only, arm64 device only. The JS bundle is built by the project's own
+  bundle script phase, so the phone needs no dev server.
+- macOS tools that pods and React Native call (`xcrun`, `xcodebuild -version`,
+  `plutil`, `otool`, `lipo`, `ditto`, `codesign`) have small Linux stand-ins.
+  Signing happens afterwards with `sign-dev.sh`.
+- Hermes: a pod's macOS `hermesc` is replaced by the npm `hermes-compiler`
+  Linux build, but only if both have the same version.
+- If the Linux ibtool can't compile a launch storyboard, the app gets a plain
+  `UILaunchScreen`, and an icon set without images gives no icon, as in Xcode.
+- The Debug configuration isn't supported yet.
+- The ibtool patch for React Native's launch storyboard hasn't been compared
+  with Apple's ibtool output.
+
 ## Notes
 
 - `apple-dev` with no arguments opens a shell. `apple-dev CMD ...` runs one command.
