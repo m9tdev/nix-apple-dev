@@ -85,6 +85,7 @@
             inherit (tools) xtool open-apple-macros actool;
             upstream = upstream-patched;
           };
+          xcbuild = pkgs.callPackage ./pkgs/xcbuild.nix { };
           apple-dev = pkgs.callPackage ./pkgs/fhs.nix {
             inherit mkFHSEnv;
             flakeSrc = self.outPath;
@@ -95,6 +96,7 @@
               tools.xtool
               ipsw
               pkgs.rcodesign
+              xcbuild
             ];
           };
         in
@@ -106,6 +108,7 @@
             upstream-patched
             apple-dev
             ios-sdk
+            xcbuild
             ;
           inherit (tools) xtool open-apple-macros actool;
           usbmuxd = pkgs.callPackage ./pkgs/usbmuxd-service.nix { };
@@ -159,7 +162,15 @@
             upstream-patched
             apple-dev
             usbmuxd
+            xcbuild
             ;
+          # the xcodeproj gem loads, and the settings resolver and header maps work
+          xcbuild-runs = pkgs.runCommand "xcbuild-runs" { } ''
+            ${p.xcbuild}/bin/apple-dev-xcbuild --help | grep -q workspace-dir
+            ${pkgs.ruby.withPackages (ps: [ ps.xcodeproj ])}/bin/ruby -e 'require "xcodeproj"'
+            ${pkgs.python3}/bin/python3 ${./xcbuild}/test_xcbuild.py
+            touch $out
+          '';
           xtool-runs = pkgs.runCommand "xtool-runs" { } ''
             ${p.xtool}/bin/xtool --help | grep -q "Cross-platform Xcode replacement"
             touch $out
