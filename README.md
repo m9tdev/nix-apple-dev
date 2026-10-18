@@ -150,6 +150,9 @@ sign-dev.sh $app app.ipa && pymobiledevice3 apps install app.ipa
   Linux build of the same version.
 - If the Linux ibtool can't compile a launch storyboard, the app gets a plain
   `UILaunchScreen`, and an icon set without images gives no icon, as in Xcode.
+- A partly filled icon set compiles its filled slots and skips the empty ones,
+  as in Xcode. actool's warnings, for example `A 1024x1024 app store icon is
+  required for iOS apps` for an empty required size, are shown in the build log.
 - The ibtool patch for React Native's launch storyboard hasn't been compared
   with Apple's ibtool output. The upstream golden self-test (`checks.ibtool-golden`)
   still passes.

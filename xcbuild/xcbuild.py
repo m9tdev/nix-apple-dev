@@ -849,15 +849,20 @@ class Build:
                 cmd += ["--target-device", {"1": "iphone", "2": "ipad"}.get(fam.strip(), "iphone")]
             icon = s.get("ASSETCATALOG_COMPILER_APPICON_NAME")
             if icon and not self.appicon_has_images(icon):
-                # Apple's actool only warns about an icon set with no images (the RN template's
-                # AppIcon) and the app gets no icon; AssetKit's actool rejects it. Same outcome:
+                # An icon set with no images (the React Native template's AppIcon): with Xcode
+                # the app gets no icon, and the build goes on. Empty slots in a partly filled
+                # set are actool's to skip (it warns for an empty required size).
                 log("  warning: app icon set '%s' has no images; the app gets no icon (as with Xcode)" % icon)
                 icon = None
             if icon:
                 cmd += ["--app-icon", icon]
             cmd += ["--compile", wrap] + self.assets
             log("  actool")
-            self.run(cmd)
+            out = self.run(cmd)
+            # Xcode shows actool's warnings in the build log; so do we.
+            for line in out.splitlines():
+                if ": warning: " in line:
+                    log("  " + line)
             if os.path.exists(partial):
                 self.partial_plist = plistlib.load(open(partial, "rb"))
         for sb in self.storyboards:
