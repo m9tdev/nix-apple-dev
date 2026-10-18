@@ -75,6 +75,10 @@ stdenv.mkDerivation {
     runHook preInstall
     mkdir -p $out
     cp -a usr $out/
+    # Same Debug fix as in ios-sdk.nix: clang compiles of Objective-C++ that
+    # include a generated -Swift.h find this toolchain's copy of the header.
+    substituteInPlace $out/usr/lib/swift/swiftToCxx/_SwiftCxxInteroperability.h \
+      --replace-fail '#if defined(DEBUG) && __has_attribute(used)' '#if 0'
 
     # Host sysroot: what clang and the Swift importer expect under / on Ubuntu.
     sr=$out/sysroot

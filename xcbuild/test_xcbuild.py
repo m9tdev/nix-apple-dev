@@ -151,5 +151,27 @@ class Supported(unittest.TestCase):
             self.assertIn(part, msg)
 
 
+class Ipconfig(unittest.TestCase):
+    """The ipconfig stand-in that gives React Native's Debug builds their dev server host."""
+    tool = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bin", "ipconfig")
+
+    def run_tool(self, *args, host=None):
+        env = {k: v for k, v in os.environ.items() if k != "APPLE_DEV_DEV_SERVER_HOST"}
+        if host is not None:
+            env["APPLE_DEV_DEV_SERVER_HOST"] = host
+        return subprocess.run([sys.executable, self.tool] + list(args), env=env, capture_output=True, text=True)
+
+    def test_host_override(self):
+        r = self.run_tool("getifaddr", "en0", host="dev.example.net")
+        self.assertEqual((r.returncode, r.stdout), (0, "dev.example.net\n"))
+
+    def test_other_interfaces_fail(self):
+        r = self.run_tool("getifaddr", "en1", host="dev.example.net")
+        self.assertEqual((r.returncode, r.stdout), (1, ""))
+
+    def test_usage(self):
+        self.assertNotEqual(self.run_tool("ifcount").returncode, 0)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)

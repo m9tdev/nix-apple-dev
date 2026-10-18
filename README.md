@@ -137,15 +137,17 @@ sign-dev.sh $app app.ipa && pymobiledevice3 apps install app.ipa
 - `--target T` builds one target and its dependencies, `--list` prints the
   build order. Logs of failed compiles are in
   `ios/build/xcbuild/failed/`, the last failed command in `last-failure.log`.
-- Release only, arm64 device only. The JS bundle is built by the project's own
-  bundle script phase, so the phone needs no dev server.
+- Release (the default) or `--configuration Debug`, arm64 device only. In
+  Release the JS bundle is built by the project's own bundle script phase, so
+  the phone needs no dev server.
 - Pods as static libraries only: no `use_frameworks!`. Framework targets, app
   extensions and Copy Files phases aren't supported; the build stops with an
   error naming them instead of leaving them out.
 - Node.js and `npx` come from the host: apple-dev doesn't include them.
 - macOS tools that pods and React Native call (`xcrun`, `xcodebuild -version`,
-  `otool`, `lipo`, `ditto`, `codesign`) have small Linux stand-ins; `plutil`
-  comes with the Swift toolchain. Signing happens afterwards with `sign-dev.sh`.
+  `otool`, `lipo`, `ditto`, `codesign`, `ipconfig`) have small Linux stand-ins;
+  `plutil` comes with the Swift toolchain. Signing happens afterwards with
+  `sign-dev.sh`.
 - Hermes: a pod's macOS `hermesc` is replaced by the npm `hermes-compiler`
   Linux build of the same version.
 - If the Linux ibtool can't compile a launch storyboard, the app gets a plain
@@ -153,6 +155,33 @@ sign-dev.sh $app app.ipa && pymobiledevice3 apps install app.ipa
 - The ibtool patch for React Native's launch storyboard hasn't been compared
   with Apple's ibtool output. The upstream golden self-test (`checks.ibtool-golden`)
   still passes.
+
+### Debug builds and the dev server
+
+A Debug build loads its JS from the project's dev server, so a JS change needs
+no native rebuild:
+
+```sh
+APPLE_DEV_DEV_SERVER_HOST=my-machine.example.net \
+  apple-dev-xcbuild --workspace-dir ios --bundle-id com.example.app --configuration Debug
+npx one dev --host 0.0.0.0 --port 8081      # or: npx expo start / npx react-native start
+```
+
+- React Native writes the dev server's host into the app (`ip.txt`) with
+  `ipconfig getifaddr en0`. The stand-in prints `$APPLE_DEV_DEV_SERVER_HOST`,
+  or else this machine's address on its default route. Set it when the phone
+  reaches the machine by another name, such as a VPN host name.
+- A host name other than `localhost` may need to be allowed by the dev server
+  (Vite: `server.allowedHosts`). Plain `http://` to a host name needs an App
+  Transport Security exception in the app's Info.plist.
+- Saving a component file updates the running app (Fast Refresh). Changes
+  that Fast Refresh doesn't re-apply, such as a layout's screen options, show
+  after a reload or relaunch.
+- Swift's C++ interop header marks its inline thunks `used` when `DEBUG` is
+  defined, which makes clang instantiate all of them; some generic types then
+  exceed clang's template depth limit. `pkgs/swift.nix` and `pkgs/ios-sdk.nix`
+  remove that attribute from both copies of the header. It only keeps the
+  thunks visible to LLDB.
 
 ## Notes
 

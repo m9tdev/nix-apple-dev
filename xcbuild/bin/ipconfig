@@ -1,0 +1,29 @@
+#!/usr/bin/env python3
+"""Linux stand-in for `ipconfig getifaddr IFACE`.
+
+React Native's bundle script asks for en0..en8 in Debug device builds and
+writes the first answer to ip.txt in the app; the app loads its JS from that
+host. Only en0 answers: $APPLE_DEV_DEV_SERVER_HOST if set (any host name or
+address the device can reach, e.g. a VPN name), else this machine's address on
+its default route. The other interfaces print nothing and fail, as on a Mac
+without them.
+"""
+import os
+import socket
+import sys
+
+if len(sys.argv) != 3 or sys.argv[1] != "getifaddr":
+    sys.exit("usage: ipconfig getifaddr IFACE (Linux stand-in)")
+if sys.argv[2] != "en0":
+    sys.exit(1)
+host = os.environ.get("APPLE_DEV_DEV_SERVER_HOST", "").strip()
+if not host:
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("192.0.2.1", 9))  # no packet is sent: this only picks the route
+        host = s.getsockname()[0]
+    except OSError:
+        sys.exit(1)
+    finally:
+        s.close()
+print(host)

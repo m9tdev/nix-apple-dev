@@ -107,6 +107,14 @@ stdenvNoCC.mkDerivation {
     mkdir -p $out
     chmod -R u+w "$bundle"
     cp -a "$bundle" $out/darwin.artifactbundle
+    # Debug builds pass -DDEBUG=1 to clang, also for Swift's C++ interop header.
+    # The header then marks every inline thunk `used`, so clang instantiates
+    # all of them, and some generic Swift types make that recurse past the
+    # template depth limit ("recursive template instantiation exceeded maximum
+    # depth of 1024"). The attribute only keeps the thunks visible to LLDB.
+    substituteInPlace \
+      $out/darwin.artifactbundle/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/swiftToCxx/_SwiftCxxInteroperability.h \
+      --replace-fail '#if defined(DEBUG) && __has_attribute(used)' '#if 0'
     cp Xcode.app/Contents/version.plist $out/version.plist
     cp -a Xcode.app/Contents/Frameworks/SiriSSUKitModel.framework/Versions/A/Resources $out/SiriSSUKitModel
     # No file may still be in compressed (decmpfs) form.
