@@ -174,7 +174,9 @@ sign-dev.sh $app app.ipa && pymobiledevice3 apps install app.ipa
   `scripts/swiftpm-lock.py .build/workspace-state.json > pkgs/locks/NAME.json`.
 - `actool` builds against [m9tdev/AssetKit](https://github.com/m9tdev/AssetKit/pull/1)
   until upstream has its fix: macOS showed the generic app icon for an Icon
-  Composer `.icon` (it was compiled in the iOS catalog layout).
+  Composer `.icon` (it was compiled in the iOS catalog layout). On top of that,
+  AssetKit skips empty app icon slots (it rejected them), and
+  `patches/actool-app-icon-warnings.patch` prints its warnings in actool's format.
 - x86_64-linux only for now.
 - Apple's Xcode licence allows its use only on Apple-branded computers.
   You decide if that matters for your use.

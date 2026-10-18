@@ -79,11 +79,17 @@
     product = "actool";
     # AssetKit with the macOS Icon Composer layout (m9tdev/AssetKit#1, on top
     # of the omarchy/mac-icon pin): without it macOS shows the generic icon
-    # for an .icon app icon. Back to upstream's pin once it lands there.
+    # for an .icon app icon. On top of that (a stacked m9tdev/AssetKit PR):
+    # app icon sets with empty slots compile, the empty slots are skipped, and
+    # actool's warning is printed for an empty required size. Back to
+    # upstream's pin once it lands there.
+    # patches/actool-app-icon-warnings.patch: passes --target-device to
+    # AssetKit and prints its warnings in actool's format.
+    patches = [ ../patches/actool-app-icon-warnings.patch ];
     postPatch = ''
       substituteInPlace tools/darwin-tools/Package.swift --replace-fail \
         '.package(url: "https://github.com/joshuaswarren/AssetKit", revision: "705ce2f2b797835cf4bac65e0dff1e9ca37ba0bf")' \
-        '.package(url: "https://github.com/m9tdev/AssetKit", revision: "4f515f85373985ce3f5dfa5d8fe72e501b9201a1")'
+        '.package(url: "https://github.com/m9tdev/AssetKit", revision: "fade9f53dcb956c2706324ebfdb2ba95c2ade3ad")'
     '';
     # AssetKit runs these through PATH: rsvg-convert (SVG, Icon Composer
     # layers), pdfinfo/pdftocairo (PDF), heif-convert (HEIC; libheif 1.16
