@@ -1,0 +1,13 @@
+#!/bin/sh
+# Linux stand-in for ditto SRC... DST. Like ditto, a source given as an argument is
+# resolved (CocoaPods passes relative symlinks from Headers/Public); links inside
+# copied directories are kept.
+[ $# -ge 2 ] || { echo "usage: ditto src... dst" >&2; exit 1; }
+for last; do :; done
+n=$#; i=0
+for src; do
+  i=$((i+1)); [ $i -eq $n ] && break
+  if [ -d "$src" ]; then mkdir -p "$last" && cp -a "$(readlink -f "$src")"/. "$last"/ || exit 1
+  elif [ -d "$last" ]; then cp -fL "$src" "$last/" || exit 1
+  else mkdir -p "$(dirname "$last")" && rm -f "$last" && cp -fL "$src" "$last" || exit 1; fi
+done

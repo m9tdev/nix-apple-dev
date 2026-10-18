@@ -1,0 +1,45 @@
+#!/usr/bin/env python3
+"""Linux stand-in for xcrun: SDK queries and tool lookup (--find, running a tool)."""
+import os, sys, shutil
+DEV = os.environ.get("DEVELOPER_DIR") or os.path.expanduser("~/.swiftpm/swift-sdks/darwin.artifactbundle/Developer")
+PLAT = {"iphoneos": "iPhoneOS", "iphonesimulator": "iPhoneSimulator", "macosx": "MacOSX"}
+a = sys.argv[1:]
+sdk = "iphoneos"
+while a and a[0].startswith("-"):
+    o = a.pop(0)
+    if o in ("--sdk", "-sdk"):
+        sdk = a.pop(0)
+    elif o in ("--show-sdk-version", "--show-sdk-path", "--show-sdk-platform-path", "--show-sdk-platform-version", "--show-sdk-build-version"):
+        name = next((v for k, v in PLAT.items() if sdk.startswith(k)), "iPhoneOS")
+        plat = os.path.join(DEV, "Platforms", name + ".platform")
+        sdkp = os.path.join(plat, "Developer/SDKs", name + ".sdk")
+        ver = "27.0"
+        try:
+            import json
+            ver = json.load(open(os.path.join(sdkp, "SDKSettings.json")))["Version"]
+        except Exception:
+            pass
+        print({"--show-sdk-version": ver, "--show-sdk-path": sdkp, "--show-sdk-platform-path": plat,
+               "--show-sdk-platform-version": ver, "--show-sdk-build-version": ""}[o])
+        sys.exit(0)
+    elif o in ("-f", "--find"):
+        a.insert(0, "--find:")
+        break
+    elif o in ("-v", "--verbose", "-l", "--log", "-n", "--no-cache", "-k", "--kill-cache"):
+        continue
+    else:
+        sys.exit("xcrun shim: unsupported option " + o)
+find = bool(a) and a[0] == "--find:"
+if find:
+    a.pop(0)
+if not a:
+    sys.exit("xcrun shim: no tool")
+tool = a[0]
+cands = [os.path.join(DEV, "Platforms/iPhoneOS.platform/Developer/usr/bin", tool),
+         os.path.join(DEV, "usr/bin", tool)]
+path = next((c for c in cands if os.access(c, os.X_OK)), None) or shutil.which(tool)
+if not path:
+    sys.exit("xcrun: error: unable to find utility \"%s\"" % tool)
+if find:
+    print(path); sys.exit(0)
+os.execv(path, [path] + a[1:])

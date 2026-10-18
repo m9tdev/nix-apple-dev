@@ -1,0 +1,4 @@
+#!/bin/sh
+# React Native's cocoapods scripts run `command -v X` through Ruby's backticks, which
+# exec a program named "command" (no shell builtin there).
+command "$@"

@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+"""Linux stand-in for plutil: -convert json|xml1|binary1 [-o OUT] FILE, -lint, -extract KEY raw."""
+import sys, json, plistlib, datetime, base64
+a = sys.argv[1:]
+def load(p):
+    return plistlib.load(open(p, "rb")) if p != "-" else plistlib.loads(sys.stdin.buffer.read())
+def conv(o):
+    if isinstance(o, bytes): return base64.b64encode(o).decode()
+    if isinstance(o, datetime.datetime): return o.isoformat()
+    raise TypeError(o)
+if a and a[0] == "-lint":
+    for p in a[1:]:
+        load(p); print(p + ": OK")
+    sys.exit(0)
+if a and a[0] == "-extract":
+    key, fmt, rest = a[1], a[2], a[3:]
+    out = None
+    if "-o" in rest:
+        i = rest.index("-o"); out = rest[i + 1]; del rest[i:i + 2]
+    d = load(rest[-1])
+    for k in key.split("."):
+        d = d[int(k)] if isinstance(d, list) else d[k]
+    s = (json.dumps(d, default=conv) if fmt == "json" else str(d)) + "\n"
+    (open(out, "w").write(s) if out and out != "-" else sys.stdout.write(s)); sys.exit(0)
+if a and a[0] == "-convert":
+    fmt = a[1]; rest = a[2:]; out = None
+    if "-o" in rest:
+        i = rest.index("-o"); out = rest[i + 1]; del rest[i:i + 2]
+    rest = [x for x in rest if x not in ("-r",)]
+    for p in rest:
+        d = load(p)
+        if fmt == "json":
+            data = json.dumps(d, default=conv).encode()
+        else:
+            data = plistlib.dumps(d, fmt=plistlib.FMT_XML if fmt == "xml1" else plistlib.FMT_BINARY)
+        dst = out or p
+        if dst == "-": sys.stdout.buffer.write(data)
+        else: open(dst, "wb").write(data)
+    sys.exit(0)
+sys.exit("plutil shim: unsupported " + " ".join(a))
