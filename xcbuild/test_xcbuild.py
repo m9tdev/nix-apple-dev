@@ -1,5 +1,6 @@
 """Unit tests for xcbuild.py: build settings like Xcode, header maps clang can read."""
 import ipaddress, os, shutil, struct, subprocess, sys, tempfile, unittest
+from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import xcbuild as x
 import xcode_version as xv
@@ -78,6 +79,30 @@ class HeaderMap(unittest.TestCase):
                 self.assertEqual(self.lookup(os.path.join(d, "t.hmap"), k), v)
             self.assertEqual(self.lookup(os.path.join(d, "t.hmap"), "anymap.HPP"), "/src/cpp/core/AnyMap.hpp")
             self.assertIsNone(self.lookup(os.path.join(d, "t.hmap"), "missing.h"))
+
+    def test_unchanged_not_rewritten(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "t.hmap")
+            x.write_hmap(p, {"a.h": "/s/a.h"})
+            os.utime(p, ns=(1, 1))
+            x._hmaps.clear()  # as in the next build
+            x.write_hmap(p, {"a.h": "/s/a.h"})
+            self.assertEqual(os.stat(p).st_mtime_ns, 1)
+            x.write_hmap(p, {"b.h": "/s/b.h"})
+            self.assertNotEqual(os.stat(p).st_mtime_ns, 1)
+
+    def test_same_map_built_once_per_run(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "t.hmap")
+            m = {"a.h": "/s/a.h"}
+            x.write_hmap(p, m)
+            with mock.patch.object(x, "write_if_changed") as w:
+                x.write_hmap(p, dict(m))
+                w.assert_not_called()
+                m["b.h"] = "/s/b.h"  # the memo holds a copy, not the caller's dict
+                x.write_hmap(p, m)
+                w.assert_called_once()
+            self.assertEqual(self.lookup(p, "b.h"), None)  # mocked write left the old file
 
 
 def macho(cputype):
@@ -189,6 +214,96 @@ class Ipconfig(unittest.TestCase):
         r = subprocess.run([unshare, "-rn", sys.executable, self.tool, "getifaddr", "en0"],
                            env=env, capture_output=True, text=True)
         self.assertEqual((r.returncode, r.stdout), (1, ""))
+
+
+class Steps(unittest.TestCase):
+    """Up-to-date checks: rerun on a new command, a missing output or new input content."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.d = self.tmp.name
+        self.src, self.out = os.path.join(self.d, "a.c"), os.path.join(self.d, "a.o")
+        write(self.src, "int a;\n")
+        write(self.out, "obj")
+        self.db = os.path.join(self.d, "steps.json")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def steps(self, env="tools"):
+        return x.Steps(self.db, env)
+
+    def recorded(self, cmd=("cc", "a.c")):
+        s = self.steps()
+        s.record(self.out, cmd, [self.src], since=time_ns_later())
+        s.save()
+
+    def test_unchanged(self):
+        self.recorded()
+        self.assertTrue(self.steps().fresh(self.out, ("cc", "a.c"), [self.out]))
+
+    def test_same_content_rewritten(self):
+        self.recorded()
+        write(self.src, "int a;\n")
+        os.utime(self.src, ns=(1, 1))
+        self.assertTrue(self.steps().fresh(self.out, ("cc", "a.c"), [self.out]))
+
+    def test_rerun(self):
+        self.recorded()
+        self.assertFalse(self.steps().fresh(self.out, ("cc", "-O2", "a.c"), [self.out]))
+        self.assertFalse(self.steps("new tools").fresh(self.out, ("cc", "a.c"), [self.out]))
+        self.assertFalse(self.steps().fresh(self.out, ("cc", "a.c"), [self.out, self.out + ".d"]))
+        write(self.src, "int b;\n")
+        self.assertFalse(self.steps().fresh(self.out, ("cc", "a.c"), [self.out]))
+        os.remove(self.src)
+        self.assertFalse(self.steps().fresh(self.out, ("cc", "a.c"), [self.out]))
+
+    def test_input_changed_during_step(self):
+        s = self.steps()
+        s.record(self.out, ("cc",), [self.src], since=0)  # the input is newer than the step
+        self.assertFalse(s.fresh(self.out, ("cc",), [self.out]))
+
+    def test_missing_input_and_directory(self):
+        s = self.steps()
+        s.record(self.out, ("cc",), [os.path.join(self.d, "gone.h"), self.d], since=time_ns_later())
+        self.assertFalse(s.fresh(self.out, ("cc",), [self.out]))
+
+    def test_forget(self):
+        self.recorded()
+        s = self.steps()
+        s.forget(self.out)
+        self.assertFalse(s.fresh(self.out, ("cc", "a.c"), [self.out]))
+
+
+def time_ns_later():
+    import time
+    return time.time_ns() + 10**9
+
+
+class DepFiles(unittest.TestCase):
+    def test_clang(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "a.o.d")
+            write(p, "/o/a.o: /s/a.m /s/My\\ Dir/b.h \\\n  /s/c$$.h\n")
+            self.assertEqual(x.read_depfile(p), ["/s/a.m", "/s/My Dir/b.h", "/s/c$.h"])
+            self.assertIsNone(x.read_depfile(os.path.join(d, "none.d")))
+
+    def test_swift_rules(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "a.d")
+            write(p, "/o/a.o : /s/a.swift /m/Foo.swiftmodule\n/o/a.swiftdeps : /s/a.swift /h/x.h\n")
+            self.assertEqual(x.read_depfile(p), ["/s/a.swift", "/m/Foo.swiftmodule", "/s/a.swift", "/h/x.h"])
+
+    def test_dependency_info(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "dep.dat")
+            # lld lists archive members (b.o of libB.a) by bare name
+            write(p, b"\x00lld\x00\x10/o/a.o\x00\x11/missing.a\x00\x10/l/libB.a\x00\x10b.o\x00\x40/app/App\x00")
+            self.assertEqual(x.read_dependency_info(p), ["/o/a.o", "/l/libB.a"])
+
+    def test_hmap_inputs(self):
+        cmd = ["clang", "-iquote", "/t/gen.hmap", "-I/t/own.hmap", "-Xcc", "-I/t/all.hmap", "-I/inc"]
+        self.assertEqual(x.hmap_inputs(cmd), ["/t/gen.hmap", "/t/own.hmap", "/t/all.hmap"])
 
 
 if __name__ == "__main__":

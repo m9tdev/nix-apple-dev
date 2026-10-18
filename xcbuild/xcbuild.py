@@ -15,7 +15,7 @@ each target in dependency order:
 
 usage: xcbuild.py --workspace-dir ios [--configuration Release] [--target T]
 """
-import argparse, glob, hashlib, json, os, plistlib, re, shlex, shutil, struct, subprocess, sys, time
+import argparse, glob, hashlib, json, os, plistlib, re, shlex, shutil, struct, subprocess, sys, threading, time
 from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -190,8 +190,17 @@ def split_words(s):
 
 # ---------------------------------------------------------------- header maps
 
+_hmaps = {}
+_hmaps_lock = threading.Lock()
+
 def write_hmap(path, mapping):
-    """Apple header map: key (case-insensitive) -> prefix + suffix."""
+    """Apple header map: key (case-insensitive) -> prefix + suffix.
+
+    Every source file of a target asks for the same maps; a map already written in this
+    run with the same entries is not built again."""
+    with _hmaps_lock:
+        if _hmaps.get(path) == mapping:
+            return
     strings = bytearray(b"\0")
     offs = {}
     def sidx(s):
@@ -218,8 +227,165 @@ def write_hmap(path, mapping):
     for b in buckets:
         data += struct.pack("<III", *b)
     data += bytes(strings)
+    write_if_changed(path, data)
+    with _hmaps_lock:
+        _hmaps[path] = dict(mapping)
+
+def write_if_changed(path, data):
+    """Leave a file that already has these bytes alone (no new mtime for the next build)."""
+    try:
+        with open(path, "rb") as f:
+            if f.read() == data:
+                return
+    except OSError:
+        pass
     with open(path, "wb") as f:
         f.write(data)
+
+# ---------------------------------------------------------------- up-to-date checks
+
+_digests = {}
+_digests_lock = threading.Lock()
+RACY_NS = 2 * 10**9
+
+def file_digest(p):
+    """sha256 of a regular file's content, or None (missing, a directory...)."""
+    try:
+        st = os.stat(p)
+    except OSError:
+        return None
+    if not os.path.isfile(p):
+        return None
+    # memoized by mtime and size, except for a file modified just now (it may change again
+    # within the same timestamp tick)
+    k = (p, st.st_mtime_ns, st.st_size)
+    memo = time.time_ns() - st.st_mtime_ns > RACY_NS
+    with _digests_lock:
+        if memo and k in _digests:
+            return _digests[k]
+    h = hashlib.sha256()
+    with open(p, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    if memo:
+        with _digests_lock:
+            _digests[k] = h.hexdigest()
+    return h.hexdigest()
+
+def read_depfile(path):
+    """Prerequisites in a Makefile-style depfile (clang -MMD, swiftc -emit-dependencies),
+    every rule in it; None if there is no depfile."""
+    try:
+        with open(path, encoding="utf-8", errors="surrogateescape") as f:
+            txt = f.read()
+    except OSError:
+        return None
+    out = []
+    for line in txt.replace("\\\n", " ").splitlines():
+        m = re.match(r"(?:\\.|[^\\])*?:(?:\s|$)", line)
+        if not m:
+            continue
+        for tok in re.findall(r"(?:\\.|[^\s\\])+", line[m.end():]):
+            out.append(re.sub(r"\\(.)", r"\1", tok.replace("$$", "$")))
+    return out
+
+def read_dependency_info(path):
+    """Input files in an ld64 -dependency_info file (records: opcode byte, NUL-terminated
+    path; 0x10 = input file), or None."""
+    try:
+        with open(path, "rb") as f:
+            data = f.read()
+    except OSError:
+        return None
+    out = []
+    for rec in data.split(b"\0"):
+        # lld also lists each archive member it loaded by its bare name; the archive itself
+        # is listed by its path, so only absolute paths are files
+        if rec[:1] == b"\x10" and rec[1:2] == b"/":
+            out.append(os.fsdecode(rec[1:]))
+    return out
+
+class Steps:
+    """Up-to-date checks for a target's build steps, as Xcode's build system does: a step
+    is skipped when its command line is the same, its outputs exist and none of its inputs
+    changed. An input counts as changed when its content changed, so a file rewritten or
+    copied with the same bytes (header maps, generated headers) does not rebuild anything."""
+
+    def __init__(self, path, env):
+        self.path = path
+        self.env = env        # tools, SDK and this script: a new toolchain rebuilds everything
+        self.lock = threading.Lock()
+        try:
+            with open(path) as f:
+                self.db = json.load(f)
+        except (OSError, ValueError):
+            self.db = {}
+
+    def key(self, cmd, cwd=None):
+        h = hashlib.sha256()
+        for x in [self.env, cwd or ""] + list(cmd):
+            h.update(x.encode("utf-8", "surrogateescape") + b"\0")
+        return h.hexdigest()
+
+    def fresh(self, key, cmd, outputs, cwd=None):
+        """key: the step's name in the record (its main output); outputs: files it writes."""
+        with self.lock:
+            rec = self.db.get(key)
+        if not rec or rec["cmd"] != self.key(cmd, cwd):
+            return False
+        if not all(os.path.exists(o) for o in outputs):
+            return False
+        # mtime and size are trusted only for files older than the record by more than the
+        # file system's timestamp granularity; a newer one may have changed within the same tick
+        racy = rec.get("at", 0) - RACY_NS
+        for p, (mtime, size, d) in list(rec["in"].items()):
+            try:
+                st = os.stat(p)
+            except OSError:
+                return False
+            if (st.st_mtime_ns, st.st_size) == (mtime, size) and d and mtime < racy:
+                continue
+            if file_digest(p) != d:
+                return False
+            with self.lock:
+                rec["in"][p] = [st.st_mtime_ns, st.st_size, d]
+        return True
+
+    def record(self, key, cmd, inputs, since, cwd=None):
+        """inputs: the files the step read; since: when it started (time.time_ns()). An input
+        modified after that may not be in the output, so the step runs again next time."""
+        ins = {}
+        for p in inputs:
+            p = os.path.join(cwd, p) if cwd and not os.path.isabs(p) else p
+            try:
+                st = os.stat(p)
+            except OSError:
+                ins[p] = [0, 0, ""]
+                continue
+            d = file_digest(p) if st.st_mtime_ns < since else None
+            ins[p] = [st.st_mtime_ns, st.st_size, d or ""]
+        with self.lock:
+            self.db[key] = {"cmd": self.key(cmd, cwd), "in": ins, "at": time.time_ns()}
+
+    def forget(self, key):
+        with self.lock:
+            self.db.pop(key, None)
+
+    def save(self):
+        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        tmp = self.path + ".tmp"
+        with self.lock, open(tmp, "w") as f:
+            json.dump(self.db, f)
+        os.replace(tmp, self.path)
+
+def hmap_inputs(cmd):
+    """The header maps a compile reads (they decide which header an #include finds)."""
+    out = []
+    for x in cmd:
+        p = x[2:] if x.startswith("-I") else x
+        if p.endswith(".hmap"):
+            out.append(p)
+    return out
 
 HEADER_EXT = (".h", ".hh", ".hpp", ".hxx", ".pch", ".inl", ".ipp", ".tcc", ".def")
 SRC_LANG = {
@@ -247,6 +413,11 @@ class Build:
         if not swiftc:
             raise SystemExit("xcbuild: swiftc is not on PATH; run apple-dev-xcbuild inside apple-dev")
         self.toolchain_include = os.path.normpath(os.path.join(os.path.dirname(os.path.realpath(swiftc)), "../include"))
+        # what every step depends on besides its command line: the resolved tools and SDK
+        # (paths like ~/.swiftpm/... stay the same when the SDK behind them changes) and this script
+        tools = [shutil.which(x) or x for x in ("swiftc", "clang", "llvm-ar")]
+        self.step_env = "\n".join([os.path.realpath(x) for x in tools + [self.sdkroot, self.devdir]]
+                                  + [file_digest(os.path.abspath(__file__)) or ""])
         self.projects = []
         self.targets = {}
         for proj in sorted(glob.glob(os.path.join(self.ws, "*.xcodeproj"))) + sorted(glob.glob(os.path.join(self.ws, "Pods/*.xcodeproj"))):
@@ -460,12 +631,52 @@ class Build:
         shell = ph.get("shell") or "/bin/sh"
         with open(tmp, "w") as f:
             f.write("#!%s\n%s\n" % (shell, ph.get("script") or ""))
+        # Like Xcode, a script that declares its inputs and outputs (files or file lists)
+        # runs only when an input changed or an output is missing; one without either, or
+        # marked "based on dependency analysis" off, runs every time.
+        ins, outs = self.script_files(s, ph, "inputs", "input_lists"), self.script_files(s, ph, "outputs", "output_lists")
+        key = None
+        if ins and outs and not ph.get("always"):
+            key = "script:" + tmp
+            sig = [shell, ph.get("script") or ""] + ins + ["->"] + outs \
+                + ["%s=%s" % (k, s.get(k)) for k in sorted(s.vals)]
+            if self.steps.fresh(key, sig, outs):
+                log("  script: %s (up to date)" % name)
+                return
+            self.steps.forget(key)
         log("  script: %s" % name)
+        since = time.time_ns()
         shell_argv = shlex.split(shell)
         self.run(shell_argv + [tmp], cwd=s.get("SRCROOT"), env=env)
+        if key:
+            self.steps.record(key, sig, ins, since)
+
+    def script_files(self, s, ph, kind, lists):
+        """A script phase's declared files: the paths and the paths in its .xcfilelist files
+        (with the lists themselves, for inputs); None if a list can't be read."""
+        out = [s.expand(x) for x in ph.get(kind) or []]
+        for lst in [s.expand(x) for x in ph.get(lists) or []]:
+            try:
+                with open(lst) as f:
+                    lines = f.read().splitlines()
+            except OSError:
+                return None
+            if kind == "inputs":
+                out.append(lst)
+            out += [s.expand(l.strip()) for l in lines if l.strip() and not l.strip().startswith("#")]
+        return out
 
     # -- compile
     def search_flags(self, t, s):
+        # Same for every source of a target: build (and write its header maps) once.
+        memo = getattr(self, "_search_flags", None)
+        if memo and memo[0] is t and memo[1] is s:
+            return list(memo[2])
+        flags = self._search_flags_uncached(t, s)
+        self._search_flags = (t, s, flags)
+        return list(flags)
+
+    def _search_flags_uncached(self, t, s):
         flags = []
         tt = s.get("TARGET_TEMP_DIR")
         bpd = s.get("BUILT_PRODUCTS_DIR")
@@ -592,10 +803,14 @@ class Build:
             n = names.get(base, 0); names[base] = n + 1
             o = os.path.join(objdir, base + ("" if n == 0 else "-%d" % n) + ".o")
             extra = split_words(s.expand(as_str((f.get("settings") or {}).get("COMPILER_FLAGS", ""))))
-            cmd = ["clang"] + self.clang_flags(t, s, lang, extra) + ["-c", p, "-o", o]
+            # -MMD: the headers it read, for the next build's up-to-date check
+            cmd = ["clang"] + self.clang_flags(t, s, lang, extra) + ["-MMD", "-MF", o + ".d", "-c", p, "-o", o]
             jobs.append((cmd, o, p))
-        objs += self.parallel(jobs)
-        return objs
+        todo = [j for j in jobs if not self.steps.fresh(j[1], j[0], [j[1]])]
+        if other and len(todo) < len(jobs):
+            log("  clang: %d of %d files (rest up to date)" % (len(todo), len(jobs)))
+        self.parallel(todo)
+        return objs + [j[1] for j in jobs]
 
     def parallel(self, jobs):
         errs = []
@@ -603,9 +818,15 @@ class Build:
             cmd, o, p = j
             if VERBOSE:
                 log("$", " ".join(shlex.quote(c) for c in cmd))
+            self.steps.forget(o)
+            since = time.time_ns()
             r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
             if r.returncode != 0:
                 errs.append((p, cmd, r.stdout))
+            else:
+                deps = read_depfile(o + ".d")
+                if deps is not None:
+                    self.steps.record(o, cmd, deps + hmap_inputs(cmd), since)
             return o
         with ThreadPoolExecutor(JOBS) as ex:
             out = list(ex.map(one, jobs))
@@ -668,33 +889,50 @@ class Build:
         ofm = {}
         objs = []
         used = {}
+        deps = []
         for f in files:
             base = os.path.splitext(os.path.basename(f["path"]))[0]
             n = used.get(base, 0); used[base] = n + 1
             o = os.path.join(objdir, base + ("" if n == 0 else "-%d" % n) + ".o")
-            ofm[f["path"]] = {"object": o}
+            stem = o[:-2]
+            ofm[f["path"]] = {"object": o, "dependencies": stem + ".d", "swift-dependencies": stem + ".swiftdeps"}
+            deps.append(stem + ".d")
             objs.append(o)
-        ofm[""] = {"swift-dependencies": os.path.join(objdir, mod + "-master.swiftdeps")}
+        master = os.path.join(objdir, mod + "-master")
+        ofm[""] = {"swift-dependencies": master + ".swiftdeps", "dependencies": master + ".d"}
+        deps.append(master + ".d")
         mapf = os.path.join(objdir, mod + "-OutputFileMap.json")
-        json.dump(ofm, open(mapf, "w"))
+        with open(mapf, "w") as fh:
+            json.dump(ofm, fh)
         moddir = os.path.join(bpd, mod + ".swiftmodule")
         os.makedirs(moddir, exist_ok=True)
-        typ = t["type"]
+        modfile = os.path.join(moddir, "arm64-apple-ios.swiftmodule")
+        header = os.path.join(dsd, mod + "-Swift.h")
         cmd = ["swiftc", "-module-name", mod] + self.swift_flags(t, s)
         # like Xcode: library mode unless the module has a main.swift (apps use @main)
         if not any(os.path.basename(f["path"]) == "main.swift" for f in files):
             cmd.append("-parse-as-library")
-        # as Xcode: the target's SWIFT_COMPILATION_MODE (default wholemodule); some projects set incremental
+        # as Xcode: the target's SWIFT_COMPILATION_MODE (default wholemodule); some projects set
+        # incremental, which recompiles only the files a change affects
         wmo = s.get("SWIFT_COMPILATION_MODE", "wholemodule") == "wholemodule"
         if wmo:
             cmd += ["-whole-module-optimization", "-num-threads", str(JOBS)]
         else:
-            cmd += ["-j%d" % JOBS]
-        cmd += ["-c", "-output-file-map", mapf, "-emit-module", "-emit-module-path", os.path.join(moddir, "arm64-apple-ios.swiftmodule"),
-                "-emit-objc-header", "-emit-objc-header-path", os.path.join(dsd, mod + "-Swift.h")]
+            cmd += ["-j%d" % JOBS, "-incremental"]
+        cmd += ["-c", "-output-file-map", mapf, "-emit-dependencies", "-emit-module", "-emit-module-path", modfile,
+                "-emit-objc-header", "-emit-objc-header-path", header]
         cmd += [f["path"] for f in files]
+        if self.steps.fresh(modfile, cmd, objs + [modfile, header], cwd=objdir):
+            log("  swiftc: %d files (up to date)" % len(files))
+            return objs
+        self.steps.forget(modfile)
         log("  swiftc: %d files" % len(files))
+        since = time.time_ns()
         self.run(cmd, cwd=objdir)
+        inputs = [f["path"] for f in files]
+        for d in deps:
+            inputs += read_depfile(d) or []
+        self.steps.record(modfile, cmd, sorted(set(inputs + hmap_inputs(cmd))), since, cwd=objdir)
         return objs
 
     # -- products
@@ -702,13 +940,20 @@ class Build:
         bpd = s.get("BUILT_PRODUCTS_DIR")
         os.makedirs(bpd, exist_ok=True)
         out = os.path.join(bpd, s.get("FULL_PRODUCT_NAME"))
+        lst = out + ".objs"
+        cmd = ["llvm-ar", "rcs", out, "@" + lst]
+        if objs and self.steps.fresh(out, cmd + objs, [out]):
+            return
+        self.steps.forget(out)
         if os.path.exists(out):
             os.unlink(out)
         if not objs:
             return
-        lst = out + ".objs"
-        open(lst, "w").write("\n".join(objs) + "\n")
-        self.run(["llvm-ar", "rcs", out, "@" + lst])
+        with open(lst, "w") as f:
+            f.write("\n".join(objs) + "\n")
+        since = time.time_ns()
+        self.run(cmd)
+        self.steps.record(out, cmd + objs, objs, since)
 
     def copy_resources(self, t, s, dest):
         for ph in t["phases"]:
@@ -820,6 +1065,16 @@ class Build:
         self.assets, self.storyboards = [], []
         self.failed_storyboards, self.partial_plist = set(), {}
         wrap = os.path.join(bpd, s.get("WRAPPER_NAME")) if s.get("WRAPPER_NAME") else None
+        self.steps = Steps(os.path.join(s.get("TARGET_TEMP_DIR"), "xcbuild-steps.json"), self.step_env)
+        try:
+            self.build_phases(t, s, typ, wrap)
+        finally:
+            self.steps.save()
+        if wrap and (typ.endswith("bundle") or typ.endswith("application")):
+            self.info_plist(t, s, wrap)
+        log("  done %s in %.1fs" % (name, time.time() - t0))
+
+    def build_phases(self, t, s, typ, wrap):
         objs = []
         for ph in t["phases"]:
             isa = ph["isa"]
@@ -834,9 +1089,6 @@ class Build:
                 self.compile_assets(t, s, wrap)
             elif isa == "PBXFrameworksBuildPhase" and typ.endswith("application"):
                 self.link_app(t, s, objs, ph, wrap)
-        if wrap and (typ.endswith("bundle") or typ.endswith("application")):
-            self.info_plist(t, s, wrap)
-        log("  done %s in %.1fs" % (name, time.time() - t0))
 
     def compile_assets(self, t, s, wrap):
         if self.assets:
@@ -928,9 +1180,19 @@ class Build:
         rt = glob.glob(os.path.join(self.toolchain, "usr/lib/clang/*/lib/darwin/libclang_rt.ios.a"))
         cmd += rt[:1]
         cmd += [w for w in s.words("OTHER_LDFLAGS")]
-        cmd += ["-o", exe]
+        # the files the linker read (-l libraries found on the search paths too), as Xcode does
+        info = os.path.join(s.get("TARGET_TEMP_DIR"), s.get("EXECUTABLE_NAME") + "_dependency_info.dat")
+        cmd += ["-Xlinker", "-dependency_info", "-Xlinker", info, "-o", exe]
+        if self.steps.fresh(exe, cmd, [exe]):
+            log("  link", os.path.basename(exe), "(up to date)")
+            return
+        self.steps.forget(exe)
         log("  link", os.path.basename(exe))
+        since = time.time_ns()
         self.run(cmd)
+        ins = read_dependency_info(info)
+        if ins:
+            self.steps.record(exe, cmd, ins + objs, since)
 
 def expand_recursive(p):
     if p.endswith("/**"):

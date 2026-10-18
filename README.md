@@ -137,6 +137,14 @@ sign-dev.sh $app app.ipa && pymobiledevice3 apps install app.ipa
 - `--target T` builds one target and its dependencies, `--list` prints the
   build order. Logs of failed compiles are in
   `ios/build/xcbuild/failed/`, the last failed command in `last-failure.log`.
+- Builds are incremental, as in Xcode. Each target keeps a record of its steps
+  in `xcbuild-steps.json`. An object, a target's Swift module, an archive, the
+  link, or a script phase that declares its inputs and outputs is redone only
+  when its command line, an input's content (headers from clang's depfiles,
+  Swift's dependency files, the linker's dependency info) or the toolchain and
+  SDK changed, or when an output is missing. A Swift target in
+  `incremental` mode (`SWIFT_COMPILATION_MODE`) recompiles only the files the
+  change affects. `rm -rf ios/build/xcbuild` gives a clean build.
 - Release (the default) or `--configuration Debug`, arm64 device only. In
   Release the JS bundle is built by the project's own bundle script phase, so
   the phone needs no dev server.
