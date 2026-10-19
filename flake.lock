@@ -74,17 +74,17 @@
     "upstream": {
       "flake": false,
       "locked": {
-        "lastModified": 1791699031,
-        "narHash": "sha256-kAuaSPgqwDg0yqYNQjG88OJjFWlevGpNidSUqbt8640=",
+        "lastModified": 1792416546,
+        "narHash": "sha256-/wPNPXTIF/UeFX6ezOGxaQvdaTn6MPg8X22vKxJ6ZiQ=",
         "owner": "joshuaswarren",
         "repo": "omarchy-apple-dev",
-        "rev": "b19eb10f8de3b5039746750e21d480002b0a9819",
+        "rev": "172e28cff7b6d5adebfa49f93957d6a864378dfb",
         "type": "github"
       },
       "original": {
         "owner": "joshuaswarren",
         "repo": "omarchy-apple-dev",
-        "rev": "b19eb10f8de3b5039746750e21d480002b0a9819",
+        "rev": "172e28cff7b6d5adebfa49f93957d6a864378dfb",
         "type": "github"
       }
     },
