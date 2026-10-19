@@ -137,6 +137,37 @@ sign-dev.sh $app app.ipa && pymobiledevice3 apps install app.ipa
 - `--target T` builds one target and its dependencies, `--list` prints the
   build order. Logs of failed compiles are in
   `ios/build/xcbuild/failed/`, the last failed command in `last-failure.log`.
+- Debug builds are incremental, as in Xcode; other configurations (Release)
+  redo every step unless `--incremental` is given, and `--clean` makes any
+  build redo every step. Each target keeps a record of its steps in
+  `xcbuild-steps.json`. An object, a target's Swift module, an archive, the
+  link, or a script phase that declares its inputs and outputs (and isn't
+  marked to run every build) is redone only when its command line, an input's
+  content (headers from clang's depfiles, Swift's dependency files, the
+  linker's dependency info) or the toolchain and SDK changed, or when an
+  output is missing or not the file the step wrote. A Swift target in
+  `incremental` mode (`SWIFT_COMPILATION_MODE`) recompiles only the files the
+  change affects. One build at a time uses a build directory; a second one
+  waits. The lock is a file in that directory, so removing the directory
+  during a build lets another build start beside it.
+  `rm -rf ios/build/xcbuild` (with no build running) also gives a clean build.
+- The projects are read with `dump-project.rb` and cached in the build
+  directory. A project is read again when its `project.pbxproj` is newer than
+  the cache, when the content of `dump-project.rb` changed, or when the Ruby
+  that runs it resolves to another path. `--clean` keeps that cache;
+  `rm -rf ios/build/xcbuild` drops it.
+- What an incremental build doesn't notice: changes to the tools other than
+  `xcbuild.py` and `dump-project.rb` (`xcode_version.py`, the stand-ins in
+  `bin/`); environment variables that the compilers or script phases read
+  (`CPATH`, ...; build settings do count); a new header that shadows one found
+  later in the search path; an SDK or a toolchain changed in place under the
+  same path; a file replaced by one with the same size and the same mtime
+  (`cp -p` or `rsync -t` from a copy with an identical timestamp), since only a
+  different mtime or size makes it hash the file; and a file edited during a
+  build on a network file system (NFS, SMB) whose server clock runs more than
+  about 20 ms behind this machine's, since the server sets the mtime.
+  `--clean` covers these. A header added to any target changes the all-headers
+  header map that every target reads, so every target recompiles.
 - Release (the default) or `--configuration Debug`, arm64 device only. In
   Release the JS bundle is built by the project's own bundle script phase, so
   the phone needs no dev server.

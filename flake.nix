@@ -175,11 +175,12 @@
             usbmuxd
             xcbuild
             ;
-          # the xcodeproj gem loads, and the settings resolver and header maps work
+          # the xcodeproj gem loads, the settings resolver and header maps work, and
+          # incremental builds redo what changed (with the toolchain's clang and llvm-ar)
           xcbuild-runs = pkgs.runCommand "xcbuild-runs" { } ''
             ${p.xcbuild}/bin/apple-dev-xcbuild --help | grep -q workspace-dir
             ${pkgs.ruby.withPackages (ps: [ ps.xcodeproj ])}/bin/ruby -e 'require "xcodeproj"'
-            ${pkgs.python3}/bin/python3 ${./xcbuild}/test_xcbuild.py
+            PATH=${p.swift}/usr/bin:$PATH ${pkgs.python3}/bin/python3 ${./xcbuild}/test_xcbuild.py
             touch $out
           '';
           # Upstream ibtool's golden self-test, with this repo's ibtool patch applied.
