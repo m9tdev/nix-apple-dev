@@ -13,9 +13,12 @@ each target in dependency order:
   - shell script phases: /bin/sh with every build setting exported;
   - the application: linked with clang + ld64.lld, Info.plist, asset catalog.
 
-usage: xcbuild.py --workspace-dir ios [--configuration Release] [--target T]
+usage: xcbuild.py --workspace-dir ios [--configuration Release] [--target T] [--clean|--incremental]
+
+Debug builds are incremental: a step is redone only when its inputs changed. Other
+configurations (Release) rebuild every step unless --incremental is given.
 """
-import argparse, glob, hashlib, json, os, plistlib, re, shlex, shutil, signal, struct, subprocess, sys, threading, time
+import argparse, fcntl, glob, hashlib, json, os, plistlib, re, shlex, shutil, signal, struct, subprocess, sys, threading, time
 from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -455,6 +458,7 @@ class Build:
         self.a = a
         self.ws = os.path.abspath(a.workspace_dir)
         self.config = a.configuration
+        self.clean = a.clean
         self.sdkroot = a.sdk
         self.devdir = a.developer_dir
         self.toolchain = os.path.join(self.devdir, "Toolchains/XcodeDefault.xctoolchain")
@@ -850,6 +854,9 @@ class Build:
         if swift:
             # own directory: Foo.swift and Foo.cpp must not both become Foo.o
             sdir = os.path.join(objdir, "swift")
+            if self.clean:
+                # swiftc's own incremental mode would reuse what it built before
+                shutil.rmtree(sdir, ignore_errors=True)
             os.makedirs(sdir, exist_ok=True)
             objs += self.compile_swift(t, s, swift, sdir)
         jobs = []
@@ -1146,7 +1153,7 @@ class Build:
         self.assets, self.storyboards = [], []
         self.failed_storyboards, self.partial_plist = set(), {}
         wrap = os.path.join(bpd, s.get("WRAPPER_NAME")) if s.get("WRAPPER_NAME") else None
-        self.steps = Steps(os.path.join(s.get("TARGET_TEMP_DIR"), "xcbuild-steps.json"), self.step_env)
+        self.steps = Steps(os.path.join(s.get("TARGET_TEMP_DIR"), "xcbuild-steps.json"), self.step_env, clean=self.clean)
         try:
             self.build_phases(t, s, typ, wrap)
         finally:
@@ -1294,7 +1301,14 @@ def main():
     ap.add_argument("--developer-dir", default=os.path.expanduser("~/.swiftpm/swift-sdks/darwin.artifactbundle/Developer"))
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--bundle-id", help="override the app's CFBundleIdentifier")
+    ap.add_argument("--clean", action="store_true",
+                    help="ignore what earlier builds did and redo every step (the default except for Debug)")
+    ap.add_argument("--incremental", action="store_true",
+                    help="redo only the steps whose inputs changed (the default for Debug)")
     a = ap.parse_args()
+    if a.clean and a.incremental:
+        ap.error("--clean and --incremental exclude each other")
+    a.clean = a.clean or (a.configuration != "Debug" and not a.incremental)
     # SIGTERM and SIGHUP end the build like Ctrl-C: running compiles finish, the record is saved
     def stop(sig, frame):
         raise SystemExit("xcbuild: stopped by signal %d" % sig)
@@ -1302,6 +1316,13 @@ def main():
         signal.signal(sig, stop)
     a.derived_data = a.derived_data or os.path.join(os.path.abspath(a.workspace_dir), "build", "xcbuild")
     os.makedirs(a.derived_data, exist_ok=True)
+    # one build at a time in a build directory: they would share objects and records
+    lock = open(os.path.join(a.derived_data, "xcbuild.lock"), "w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        log("another build is using %s; waiting for it to end" % a.derived_data)
+        fcntl.flock(lock, fcntl.LOCK_EX)
     b = Build(a)
     open(os.path.join(b.derived, "session"), "a").close()
     os.utime(os.path.join(b.derived, "session"))
@@ -1314,6 +1335,8 @@ def main():
         return
     b.check_supported(order)
     t0 = time.time()
+    if a.clean:
+        log("clean build (--incremental to redo only what changed)")
     for n in order:
         b.build_target(n)
     log("build succeeded in %.0fs" % (time.time() - t0))
