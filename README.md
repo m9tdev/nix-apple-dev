@@ -148,6 +148,15 @@ sign-dev.sh $app app.ipa && pymobiledevice3 apps install app.ipa
   Swift target in `incremental` mode (`SWIFT_COMPILATION_MODE`) recompiles only
   the files the change affects. One build at a time uses a build directory; a
   second one waits. `rm -rf ios/build/xcbuild` also gives a clean build.
+- What an incremental build doesn't notice (Xcode misses the same): changes
+  to the tools other than `xcbuild.py` (`xcode_version.py`, the stand-ins in
+  `bin/`, `dump-project.rb`); environment variables the compilers read
+  (`CPATH`, ...); a new header that shadows one found later in the search
+  path; an SDK changed in place under the same path; and a file replaced by
+  one with the same size and an old mtime (`cp -p`, `rsync -t`): only a new
+  mtime or size makes it hash the file. `--clean` covers these. A header added
+  to any target changes the all-headers header map that every target reads, so
+  every target recompiles.
 - Release (the default) or `--configuration Debug`, arm64 device only. In
   Release the JS bundle is built by the project's own bundle script phase, so
   the phone needs no dev server.
