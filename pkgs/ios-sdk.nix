@@ -107,6 +107,19 @@ stdenvNoCC.mkDerivation {
     mkdir -p $out
     chmod -R u+w "$bundle"
     cp -a "$bundle" $out/darwin.artifactbundle
+    # Debug builds pass -DDEBUG=1 to clang, also for Swift's C++ interop header.
+    # The header then marks every inline thunk `used`, so clang instantiates
+    # all of them, and TypeMetadataTrait<swift::Optional<T>> recurses without
+    # bound ("recursive template instantiation exceeded maximum depth of
+    # 1024"; a larger -ftemplate-depth doesn't help). The attribute only keeps
+    # the thunks visible to LLDB, so it's off unless the build defines
+    # SWIFT_CXX_INTEROP_USED_THUNKS. Test: .#ios-sdk.tests.debug-cxx-interop
+    # Linux only: Xcode 27.1 on macOS compiles the same header with DEBUG
+    # defined, so no upstream issue.
+    substituteInPlace \
+      $out/darwin.artifactbundle/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/swiftToCxx/_SwiftCxxInteroperability.h \
+      --replace-fail '#if defined(DEBUG) && __has_attribute(used)' \
+        '#if defined(SWIFT_CXX_INTEROP_USED_THUNKS) && __has_attribute(used)'
     cp Xcode.app/Contents/version.plist $out/version.plist
     cp -a Xcode.app/Contents/Frameworks/SiriSSUKitModel.framework/Versions/A/Resources $out/SiriSSUKitModel
     # No file may still be in compressed (decmpfs) form.
