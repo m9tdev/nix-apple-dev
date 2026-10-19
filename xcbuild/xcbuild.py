@@ -848,16 +848,15 @@ class Build:
             for fam in s.get("TARGETED_DEVICE_FAMILY", "1").split(","):
                 cmd += ["--target-device", {"1": "iphone", "2": "ipad"}.get(fam.strip(), "iphone")]
             icon = s.get("ASSETCATALOG_COMPILER_APPICON_NAME")
-            if icon and not self.appicon_has_images(icon):
-                # Apple's actool only warns about an icon set with no images (the RN template's
-                # AppIcon) and the app gets no icon; AssetKit's actool rejects it. Same outcome:
-                log("  warning: app icon set '%s' has no images; the app gets no icon (as with Xcode)" % icon)
-                icon = None
             if icon:
                 cmd += ["--app-icon", icon]
             cmd += ["--compile", wrap] + self.assets
             log("  actool")
-            self.run(cmd)
+            out = self.run(cmd)
+            # Xcode shows actool's warnings in the build log; so do we.
+            for line in out.splitlines():
+                if ": warning: " in line:
+                    log("  " + line)
             if os.path.exists(partial):
                 self.partial_plist = plistlib.load(open(partial, "rb"))
         for sb in self.storyboards:
@@ -889,13 +888,6 @@ class Build:
                     % (os.path.basename(sb), r.stdout.strip()[-200:]))
                 shutil.rmtree(out, ignore_errors=True)
                 self.failed_storyboards.add(name)
-
-    def appicon_has_images(self, name):
-        for cat in self.assets:
-            cj = os.path.join(cat, name + ".appiconset", "Contents.json")
-            if os.path.exists(cj):
-                return any(i.get("filename") for i in json.load(open(cj)).get("images", []))
-        return True  # not in an .xcassets here (e.g. an Icon Composer .icon): let actool decide
 
     def link_app(self, t, s, objs, ph, wrap):
         os.makedirs(wrap, exist_ok=True)

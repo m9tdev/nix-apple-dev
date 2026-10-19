@@ -171,6 +171,12 @@
             ${pkgs.python3}/bin/python3 ${./xcbuild}/test_xcbuild.py
             touch $out
           '';
+          # app icon sets with empty slots: skipped, with Apple's warning for an
+          # empty required size; an empty set gives no icon
+          actool-app-icons = pkgs.runCommand "actool-app-icons" { } ''
+            ${pkgs.python3}/bin/python3 ${./tests/actool_app_icons.py} ${p.actool}/bin/actool
+            touch $out
+          '';
           # Upstream ibtool's golden self-test, with this repo's ibtool patch applied.
           ibtool-golden = pkgs.runCommand "ibtool-golden" { } ''
             ${pkgs.python3}/bin/python3 ${p.upstream-patched}/tools/ibtool --self-test

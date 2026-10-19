@@ -1,0 +1,27 @@
+--- a/tools/darwin-tools/Sources/actool/main.swift
++++ b/tools/darwin-tools/Sources/actool/main.swift
+@@ -140,9 +140,23 @@
+ // rendition-key layout (FINDINGS 60); every other value keeps the iOS bytes.
+ let result = try await XCAssetCompiler(
+         deploymentTarget: option("--minimum-deployment-target") ?? "17.0",
+-        platform: option("--platform") ?? "iphoneos")
++        platform: option("--platform") ?? "iphoneos",
++        targetDevices: idioms)
+     .compile(catalog: source, appIconName: appIcon, iconComposer: iconComposer,
+              alternateIconComposers: alternateIconComposers)
++// AssetKit's warnings (e.g. a required app icon size the set leaves empty)
++// name an asset in the merged catalog: print each against the input catalog
++// that has it, as actool does ("<catalog>:./AppIcon.appiconset: warning: ...").
++if !result.warnings.isEmpty {
++    print("/* com.apple.actool.document.warnings */")
++    for warning in result.warnings {
++        let index = inputs.firstIndex {
++            FileManager.default.fileExists(atPath: $0.appendingPathComponent(warning.path).path)
++        } ?? 0
++        print("\(catalogs[index]):\(warning.path): warning: \(warning.message)")
++    }
++    print("")
++}
+ var outputs: [URL] = []
+ if result.renditionCount > 0 {
+     // actool 27.0 writes no Assets.car when no rendition survives; an empty car stalls App Store processing.
