@@ -347,6 +347,11 @@ class Steps(unittest.TestCase):
         s.record(self.out, ("cc",), [self.src, h], time_ns_later(), [self.out], skip=(sdk + "/",))
         self.assertEqual(list(s.db[self.out]["in"]), [self.src])
 
+    def test_forget_marks_files_only(self):
+        s = self.steps()
+        s.forget(self.out, "script:/t/Script-1.sh", outputs=[self.src])
+        self.assertEqual(s.ours, {self.out, self.src})
+
     def test_prune_keeps_outputs_of_this_build(self):
         # a step renamed (its key changed, not its output): the old record goes, the file stays
         s = self.steps()

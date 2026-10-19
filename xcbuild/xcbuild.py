@@ -447,7 +447,7 @@ class Steps:
         """Steps about to run: out of the record, here and on disk, before they start.
         outputs: theirs besides the keys (which name the main ones)."""
         with self.lock:
-            self.ours.update(keys)
+            self.ours.update(k for k in keys if os.path.isabs(k))  # not script phases' names
             self.ours.update(outputs)
             for k in keys:
                 self.seen.add(k)
