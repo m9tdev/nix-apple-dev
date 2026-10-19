@@ -317,6 +317,15 @@ class Steps(unittest.TestCase):
             with mock.patch.object(x, "file_digest", side_effect=AssertionError("rehashed")):
                 self.assertTrue(s.fresh(self.out, ("cc", "a.c"), [self.out]))
 
+    def test_skip_sdk(self):
+        sdk = os.path.join(self.d, "sdk")
+        os.mkdir(sdk)
+        h = os.path.join(sdk, "UIKit.h")
+        write(h, "x")
+        s = self.steps()
+        s.record(self.out, ("cc",), [self.src, h], time_ns_later(), [self.out], skip=(sdk + "/",))
+        self.assertEqual(list(s.db[self.out]["in"]), [self.src])
+
     def test_clean(self):
         self.recorded()
         self.steps().forget("other")

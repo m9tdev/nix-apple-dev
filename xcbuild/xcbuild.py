@@ -273,7 +273,7 @@ def file_digest(p):
     return h.hexdigest()
 
 def read_depfile(path):
-    """Prerequisites in a Makefile-style depfile (clang -MMD, swiftc -emit-dependencies),
+    """Prerequisites in a Makefile-style depfile (clang -MD, swiftc -emit-dependencies),
     every rule in it; None if there is no depfile."""
     try:
         with open(path, encoding="utf-8", errors="surrogateescape") as f:
@@ -392,13 +392,16 @@ class Steps:
                 rec["at"] = now
         return True
 
-    def record(self, key, cmd, inputs, since, outputs, cwd=None):
+    def record(self, key, cmd, inputs, since, outputs, cwd=None, skip=()):
         """inputs: the files the step read; since: when it started (time.time_ns()). An input
         modified after that may not be in the output, so the step runs again next time.
-        outputs: the files it wrote."""
+        outputs: the files it wrote; skip: path prefixes not to record (the SDK and the
+        toolchain, which the record's env identifies)."""
         ins = {}
         for p in inputs:
             p = os.path.join(cwd, p) if cwd and not os.path.isabs(p) else p
+            if skip and p.startswith(skip):
+                continue
             try:
                 st = os.stat(p)
             except OSError:
@@ -470,6 +473,13 @@ class Build:
         tools = [shutil.which(x) or x for x in ("swiftc", "clang", "llvm-ar")]
         self.step_env = "\n".join([os.path.realpath(x) for x in tools + [self.sdkroot, self.devdir]]
                                   + [file_digest(os.path.abspath(__file__)) or ""])
+        # Headers there (the SDK, clang's own headers) are not recorded as a step's inputs: the
+        # env above identifies them, and an object's record would otherwise list a thousand
+        # SDK headers.
+        resource_dir = shutil.which("clang") and subprocess.run(
+            ["clang", "-print-resource-dir"], stdout=subprocess.PIPE, text=True).stdout.strip()
+        self.skip = tuple(sorted({os.path.join(q, "") for p in (self.devdir, self.sdkroot, resource_dir, self.toolchain_include)
+                                  if p for q in (os.path.abspath(p), os.path.realpath(p))}))
         self.projects = []
         self.targets = {}
         for proj in sorted(glob.glob(os.path.join(self.ws, "*.xcodeproj"))) + sorted(glob.glob(os.path.join(self.ws, "Pods/*.xcodeproj"))):
@@ -855,8 +865,9 @@ class Build:
             n = names.get(base, 0); names[base] = n + 1
             o = os.path.join(objdir, base + ("" if n == 0 else "-%d" % n) + ".o")
             extra = split_words(s.expand(as_str((f.get("settings") or {}).get("COMPILER_FLAGS", ""))))
-            # -MMD: the headers it read, for the next build's up-to-date check
-            cmd = ["clang"] + self.clang_flags(t, s, lang, extra) + ["-MMD", "-MF", o + ".d", "-c", p, "-o", o]
+            # -MD: the headers it read, for the next build's up-to-date check; system headers too
+            # (pods' headers on -isystem paths, from CocoaPods' inhibit_all_warnings)
+            cmd = ["clang"] + self.clang_flags(t, s, lang, extra) + ["-MD", "-MF", o + ".d", "-c", p, "-o", o]
             jobs.append((cmd, o, p))
         todo = [j for j in jobs if not self.steps.fresh(j[1], j[0], [j[1]])]
         if todo:
@@ -880,7 +891,7 @@ class Build:
             else:
                 deps = read_depfile(o + ".d")
                 if deps is not None:
-                    self.steps.record(o, cmd, deps + hmap_inputs(cmd), since, [o])
+                    self.steps.record(o, cmd, deps + hmap_inputs(cmd), since, [o], skip=self.skip)
             return o
         ex = ThreadPoolExecutor(JOBS)
         try:
@@ -1002,7 +1013,7 @@ class Build:
                 log("  warning: swiftc wrote no %s" % os.path.basename(d))
                 return objs
             inputs += found
-        self.steps.record(modfile, cmd, sorted(set(inputs + hmap_inputs(cmd))), since, outs, cwd=objdir)
+        self.steps.record(modfile, cmd, sorted(set(inputs + hmap_inputs(cmd))), since, outs, cwd=objdir, skip=self.skip)
         return objs
 
     # -- products
@@ -1262,7 +1273,7 @@ class Build:
         self.run(cmd)
         ins = read_dependency_info(info)
         if ins:
-            self.steps.record(exe, cmd, ins + objs, since, [exe])
+            self.steps.record(exe, cmd, ins + objs, since, [exe], skip=self.skip)
 
 def expand_recursive(p):
     if p.endswith("/**"):
