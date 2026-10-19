@@ -139,16 +139,17 @@ sign-dev.sh $app app.ipa && pymobiledevice3 apps install app.ipa
   `ios/build/xcbuild/failed/`, the last failed command in `last-failure.log`.
 - Debug builds are incremental, as in Xcode; other configurations (Release)
   redo every step unless `--incremental` is given, and `--clean` makes any
-  build redo every step. Each target keeps a record of its steps
-  in `xcbuild-steps.json`. An object, a target's Swift module, an archive, the
-  link, or a script phase that declares its inputs and outputs is redone only
-  when its command line, an input's content (headers from clang's depfiles,
-  Swift's dependency files, the linker's dependency info) or the toolchain and
-  SDK changed, or when an output is missing or not the file the step wrote. A
-  Swift target in `incremental` mode (`SWIFT_COMPILATION_MODE`) recompiles only
-  the files the change affects. One build at a time uses a build directory; a
-  second one waits. The lock is a file in that directory, so removing the
-  directory during a build lets another build start beside it.
+  build redo every step. Each target keeps a record of its steps in
+  `xcbuild-steps.json`. An object, a target's Swift module, an archive, the
+  link, or a script phase that declares its inputs and outputs (and isn't
+  marked to run every build) is redone only when its command line, an input's
+  content (headers from clang's depfiles, Swift's dependency files, the
+  linker's dependency info) or the toolchain and SDK changed, or when an
+  output is missing or not the file the step wrote. A Swift target in
+  `incremental` mode (`SWIFT_COMPILATION_MODE`) recompiles only the files the
+  change affects. One build at a time uses a build directory; a second one
+  waits. The lock is a file in that directory, so removing the directory
+  during a build lets another build start beside it.
   `rm -rf ios/build/xcbuild` (with no build running) also gives a clean build.
 - The projects are read with `dump-project.rb` and cached in the build
   directory. A project is read again when its `project.pbxproj` is newer than
