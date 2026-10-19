@@ -114,7 +114,8 @@ stdenvNoCC.mkDerivation {
     # 1024"; a larger -ftemplate-depth doesn't help). The attribute only keeps
     # the thunks visible to LLDB, so it's off unless the build defines
     # SWIFT_CXX_INTEROP_USED_THUNKS. Test: .#ios-sdk.tests.debug-cxx-interop
-    # Upstream issue: none filed yet.
+    # Linux only: Xcode 27.1 on macOS compiles the same header with DEBUG
+    # defined, so no upstream issue.
     substituteInPlace \
       $out/darwin.artifactbundle/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/swiftToCxx/_SwiftCxxInteroperability.h \
       --replace-fail '#if defined(DEBUG) && __has_attribute(used)' \

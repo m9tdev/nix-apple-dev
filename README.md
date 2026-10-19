@@ -185,8 +185,9 @@ npx one dev --host 0.0.0.0 --port 8081      # or: npx expo start / npx react-nat
   any template depth limit. `pkgs/swift.nix` and `pkgs/ios-sdk.nix` change
   both copies of the header to mark them `used` only if
   `SWIFT_CXX_INTEROP_USED_THUNKS` is defined. The attribute only keeps the
-  thunks visible to LLDB. The test needs the SDK:
-  `nix build .#ios-sdk.tests.debug-cxx-interop`.
+  thunks visible to LLDB. This happens only with the Linux toolchain: Xcode
+  27.1 on macOS compiles the same header with `DEBUG` defined. The test needs
+  the SDK: `nix build .#ios-sdk.tests.debug-cxx-interop`.
 
 ## Notes
 
