@@ -538,12 +538,22 @@ class Build:
                 self.all_headers.setdefault(os.path.basename(f), f)
 
     def load(self, proj):
-        cache = os.path.join(self.derived, "projects", "%s.%s.json" % (os.path.basename(proj), self.config))
-        os.makedirs(os.path.dirname(cache), exist_ok=True)
-        pbx = os.path.join(proj, "project.pbxproj")
-        # read again when the project or the reader changed
+        # The project as dump-project.rb reads it, cached per reader: the file name has a digest
+        # of the reader and the Ruby running it (installed files all have the same mtime, so a
+        # new reader is told by its content). Read again when project.pbxproj is newer.
         dumper = os.path.join(HERE, "dump-project.rb")
-        if not os.path.exists(cache) or os.path.getmtime(cache) < max(os.path.getmtime(pbx), os.path.getmtime(dumper)):
+        with open(dumper, "rb") as f:
+            reader = hashlib.sha256(os.fsencode(os.path.realpath(shutil.which(RUBY) or RUBY)) + b"\0"
+                                    + f.read()).hexdigest()[:12]
+        cdir = os.path.join(self.derived, "projects")
+        prefix = "%s.%s" % (os.path.basename(proj), self.config)
+        cache = os.path.join(cdir, "%s.%s.json" % (prefix, reader))
+        os.makedirs(cdir, exist_ok=True)
+        for old in os.listdir(cdir):  # caches made by other readers
+            if re.fullmatch(re.escape(prefix) + r"(\.[0-9a-f]{12})?\.json", old) and old != os.path.basename(cache):
+                os.remove(os.path.join(cdir, old))
+        pbx = os.path.join(proj, "project.pbxproj")
+        if not os.path.exists(cache) or os.path.getmtime(cache) < os.path.getmtime(pbx):
             tmp = cache + ".tmp"
             try:
                 with open(tmp, "w") as f:

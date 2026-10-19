@@ -135,6 +135,58 @@ class XcodeVersion(unittest.TestCase):
         self.assertEqual(xv.XCODE_VERSION_NUMBER, "%02d%s0" % tuple(int(n) for n in xv.XCODE_VERSION.split(".")[:2]))
 
 
+class ProjectCache(unittest.TestCase):
+    """A project is read again by a new dump-project.rb, told by its content: installed files
+    all have the same mtime."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        d = self.d = self.tmp.name
+        self.here = os.path.join(d, "libexec")
+        os.makedirs(self.here)
+        self.proj = os.path.join(d, "ios", "P.xcodeproj")
+        os.makedirs(self.proj)
+        write(os.path.join(self.proj, "project.pbxproj"), "// project\n")
+        self.ruby = os.path.join(d, "ruby")
+        # a stand-in for Ruby running the reader: the project, as dumped by this reader
+        write(self.ruby, "#!%s\nimport json, sys\nopen(%r, 'a').write('run\\n')\n"
+                         "print(json.dumps({'name': 'P', 'targets': [], 'reader': open(sys.argv[1]).read()}))\n"
+              % (sys.executable, os.path.join(d, "runs")))
+        os.chmod(self.ruby, 0o755)
+        self.reader("v1")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def reader(self, text):
+        p = os.path.join(self.here, "dump-project.rb")
+        write(p, text)
+        os.utime(p, ns=(10**9, 10**9))  # as in the Nix store
+
+    def load(self):
+        b = x.Build.__new__(x.Build)
+        b.derived, b.config, b.projects, b.targets = os.path.join(self.d, "build"), "Debug", [], {}
+        with mock.patch.object(x, "HERE", self.here), mock.patch.object(x, "RUBY", self.ruby):
+            b.load(self.proj)
+        runs = os.path.join(self.d, "runs")
+        return b.projects[0]["reader"], len(read(runs).splitlines()) if os.path.exists(runs) else 0
+
+    def test_new_reader(self):
+        # a cache from before readers were told apart, by a reader without dependency_file
+        cdir = os.path.join(self.d, "build", "projects")
+        os.makedirs(cdir)
+        write(os.path.join(cdir, "P.xcodeproj.Debug.json"), '{"name": "P", "targets": [], "reader": "v0"}')
+        self.assertEqual(self.load(), ("v1", 1))
+        self.assertEqual(self.load(), ("v1", 1))  # same reader, same project: the cache
+        self.reader("v2")
+        self.assertEqual(self.load(), ("v2", 2))
+        self.assertEqual(len(os.listdir(cdir)), 1)  # the other readers' caches are gone
+        self.assertEqual(self.load(), ("v2", 2))
+        t = time.time_ns()
+        os.utime(os.path.join(self.proj, "project.pbxproj"), ns=(t + 10**9, t + 10**9))
+        self.assertEqual(self.load(), ("v2", 3))
+
+
 class Supported(unittest.TestCase):
     def build(self, targets):
         b = x.Build.__new__(x.Build)
