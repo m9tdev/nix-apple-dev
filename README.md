@@ -170,13 +170,15 @@ npx one dev --host 0.0.0.0 --port 8081      # or: npx expo start / npx react-nat
 - React Native writes the dev server's host into the app (`ip.txt`) with
   `ipconfig getifaddr en0`. The stand-in prints `$APPLE_DEV_DEV_SERVER_HOST`,
   or else this machine's address on its default route. Set it when the phone
-  reaches the machine by another name, such as a VPN host name.
+  reaches the machine by another name, such as a VPN host name. It must be a
+  host name or an IPv4 address, without a scheme or port.
+- If the stand-in finds no address (no variable, no default route), React
+  Native falls back to `ifconfig`. apple-dev doesn't include `ifconfig`, so
+  that works only if the host has one on `PATH`; otherwise `ip.txt` is empty
+  and the app looks for the dev server on `localhost`.
 - A host name other than `localhost` may need to be allowed by the dev server
   (Vite: `server.allowedHosts`). Plain `http://` to a host name needs an App
   Transport Security exception in the app's Info.plist.
-- Saving a component file updates the running app (Fast Refresh). Changes
-  that Fast Refresh doesn't re-apply, such as a layout's screen options, show
-  after a reload or relaunch.
 - Swift's C++ interop header marks its inline thunks `used` when `DEBUG` is
   defined, which makes clang instantiate all of them;
   `TypeMetadataTrait<swift::Optional<T>>` then recurses without bound, past

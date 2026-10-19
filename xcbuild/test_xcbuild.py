@@ -1,5 +1,5 @@
 """Unit tests for xcbuild.py: build settings like Xcode, header maps clang can read."""
-import os, struct, subprocess, sys, tempfile, unittest
+import ipaddress, os, shutil, struct, subprocess, sys, tempfile, unittest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import xcbuild as x
 import xcode_version as xv
@@ -171,6 +171,24 @@ class Ipconfig(unittest.TestCase):
 
     def test_usage(self):
         self.assertNotEqual(self.run_tool("ifcount").returncode, 0)
+
+    def test_default_route(self):
+        # With a default route: an IPv4 address. Without one (as in a build sandbox): nothing, exit 1.
+        r = self.run_tool("getifaddr", "en0")
+        if r.stdout:
+            self.assertEqual(r.returncode, 0)
+            ipaddress.IPv4Address(r.stdout.strip())
+        else:
+            self.assertEqual(r.returncode, 1)
+
+    def test_no_route(self):
+        unshare = shutil.which("unshare")
+        if not unshare or subprocess.run([unshare, "-rn", "true"], capture_output=True).returncode != 0:
+            self.skipTest("no unshare -rn here")
+        env = {k: v for k, v in os.environ.items() if k != "APPLE_DEV_DEV_SERVER_HOST"}
+        r = subprocess.run([unshare, "-rn", sys.executable, self.tool, "getifaddr", "en0"],
+                           env=env, capture_output=True, text=True)
+        self.assertEqual((r.returncode, r.stdout), (1, ""))
 
 
 if __name__ == "__main__":
