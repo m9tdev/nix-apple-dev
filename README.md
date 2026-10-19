@@ -144,8 +144,8 @@ sign-dev.sh $app app.ipa && pymobiledevice3 apps install app.ipa
   error naming them instead of leaving them out.
 - Node.js and `npx` come from the host: apple-dev doesn't include them.
 - macOS tools that pods and React Native call (`xcrun`, `xcodebuild -version`,
-  `plutil`, `otool`, `lipo`, `ditto`, `codesign`) have small Linux stand-ins.
-  Signing happens afterwards with `sign-dev.sh`.
+  `otool`, `lipo`, `ditto`, `codesign`) have small Linux stand-ins; `plutil`
+  comes with the Swift toolchain. Signing happens afterwards with `sign-dev.sh`.
 - Hermes: a pod's macOS `hermesc` is replaced by the npm `hermes-compiler`
   Linux build, but only if both have the same version. This changes `Pods/`:
   `hermes-engine/destroot/bin/hermesc` is renamed to `hermesc.macos`, and a

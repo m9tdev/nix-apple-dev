@@ -1,5 +1,5 @@
 """Unit tests for xcbuild.py: build settings like Xcode, header maps clang can read."""
-import os, plistlib, struct, subprocess, sys, tempfile, unittest
+import os, struct, subprocess, sys, tempfile, unittest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import xcbuild as x
 
@@ -108,20 +108,6 @@ class Lipo(unittest.TestCase):
             self.assertEqual(tool("lipo", "-thin", "arm64", f, "-output", out).returncode, 0)
             self.assertEqual(read(out), arm)
             self.assertNotEqual(tool("lipo", "-thin", "armv7", f, "-output", out).returncode, 0)
-
-
-class Plutil(unittest.TestCase):
-    def test_convert_extract(self):
-        with tempfile.TemporaryDirectory() as d:
-            p = os.path.join(d, "Info.plist")
-            write(p, plistlib.dumps({"CFBundleName": "App", "N": [1, 2]}))
-            self.assertEqual(tool("plutil", "-convert", "binary1", p).returncode, 0)
-            self.assertEqual(read(p)[:8], b"bplist00")
-            self.assertEqual(tool("plutil", "-extract", "CFBundleName", "raw", p).stdout, "App\n")
-            self.assertEqual(tool("plutil", "-extract", "N.1", "raw", p).stdout, "2\n")
-            r = tool("plutil", "-convert", "json", "-o", "-", p)
-            self.assertEqual(r.stdout, '{"CFBundleName": "App", "N": [1, 2]}')
-            self.assertEqual(tool("plutil", "-lint", p).stdout, p + ": OK\n")
 
 
 class XcodeVersion(unittest.TestCase):
