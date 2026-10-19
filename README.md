@@ -155,11 +155,13 @@ sign-dev.sh $app app.ipa && pymobiledevice3 apps install app.ipa
   `bin/`, `dump-project.rb`); environment variables that the compilers or
   script phases read (`CPATH`, ...; build settings do count); a new header
   that shadows one found later in the search path; an SDK or a toolchain
-  changed in place under the same path; and a file replaced by
-  one with the same size and an old mtime (`cp -p`, `rsync -t`): only a new
-  mtime or size makes it hash the file. `--clean` covers these. A header added
-  to any target changes the all-headers header map that every target reads, so
-  every target recompiles.
+  changed in place under the same path; a file replaced by one with the same
+  size and an old mtime (`cp -p`, `rsync -t`), since only a new mtime or size
+  makes it hash the file; and a file edited during a build on a network file
+  system (NFS, SMB) whose server clock runs more than about 20 ms behind this
+  machine's, since the server sets the mtime. `--clean` covers these. A header
+  added to any target changes the all-headers header map that every target
+  reads, so every target recompiles.
 - Release (the default) or `--configuration Debug`, arm64 device only. In
   Release the JS bundle is built by the project's own bundle script phase, so
   the phone needs no dev server.
