@@ -2,6 +2,7 @@
 import os, struct, subprocess, sys, tempfile, unittest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import xcbuild as x
+import xcode_version as xv
 
 BIN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bin")
 
@@ -113,11 +114,11 @@ class Lipo(unittest.TestCase):
 class XcodeVersion(unittest.TestCase):
     def test_xcodebuild_version(self):
         r = tool("xcodebuild", "-version")
-        self.assertEqual(r.stdout, "Xcode %s\nBuild version %s\n" % (x.XCODE_VERSION, x.XCODE_BUILD))
+        self.assertEqual(r.stdout, "Xcode %s\nBuild version %s\n" % (xv.XCODE_VERSION, xv.XCODE_BUILD))
         self.assertNotEqual(tool("xcodebuild", "build").returncode, 0)
 
     def test_number(self):
-        self.assertEqual(x.XCODE_VERSION_NUMBER, "%02d%s0" % tuple(int(n) for n in x.XCODE_VERSION.split(".")[:2]))
+        self.assertEqual(xv.XCODE_VERSION_NUMBER, "%02d%s0" % tuple(int(n) for n in xv.XCODE_VERSION.split(".")[:2]))
 
 
 class Supported(unittest.TestCase):

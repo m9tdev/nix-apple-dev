@@ -19,7 +19,7 @@ import argparse, glob, hashlib, json, os, plistlib, re, shlex, shutil, struct, s
 from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from xcode_version import XCODE_BUILD, XCODE_VERSION, XCODE_VERSION_NUMBER
+from xcode_version import XCODE_BUILD, XCODE_VERSION_NUMBER
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RUBY = os.environ.get("XCBUILD_RUBY", "ruby")
@@ -249,7 +249,6 @@ class Build:
         self.toolchain_include = os.path.normpath(os.path.join(os.path.dirname(os.path.realpath(swiftc)), "../include"))
         self.projects = []
         self.targets = {}
-        self.done = set()
         for proj in sorted(glob.glob(os.path.join(self.ws, "*.xcodeproj"))) + sorted(glob.glob(os.path.join(self.ws, "Pods/*.xcodeproj"))):
             self.load(proj)
         self.all_headers = {}
@@ -825,9 +824,6 @@ class Build:
         for ph in t["phases"]:
             isa = ph["isa"]
             if isa == "PBXShellScriptBuildPhase":
-                if self.a.skip_script and any(re.search(x, ph.get("name") or "") for x in self.a.skip_script):
-                    log("  skip script (--skip-script):", ph.get("name"))
-                    continue
                 self.run_script(t, s, ph)
             elif isa == "PBXSourcesBuildPhase":
                 objs = self.compile_target(t, s)
@@ -950,8 +946,6 @@ def main():
     ap.add_argument("--workspace-dir", default="ios")
     ap.add_argument("--configuration", default="Release")
     ap.add_argument("--target", action="append", help="build only these targets (and their dependencies)")
-    ap.add_argument("--only", action="store_true", help="with --target: skip dependencies")
-    ap.add_argument("--skip-script", action="append", help="regex of script phase names to skip")
     ap.add_argument("--derived-data", default=None)
     ap.add_argument("--sdk", default=os.path.expanduser("~/.swiftpm/swift-sdks/darwin.artifactbundle/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk"))
     ap.add_argument("--developer-dir", default=os.path.expanduser("~/.swiftpm/swift-sdks/darwin.artifactbundle/Developer"))
@@ -965,7 +959,7 @@ def main():
     os.utime(os.path.join(b.derived, "session"))
     apps = [n for n, t in b.targets.items() if t["type"].endswith("application")]
     names = a.target or apps
-    order = names if a.only else b.order(names)
+    order = b.order(names)
     if a.list:
         for n in order:
             print(n, b.targets[n]["type"])

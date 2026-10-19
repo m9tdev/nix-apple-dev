@@ -134,8 +134,8 @@ provision-dev.py --bundle-id com.example.app --udid <UDID>
 sign-dev.sh $app app.ipa && pymobiledevice3 apps install app.ipa
 ```
 
-- `--target T` builds one target and its dependencies, `--only` skips the
-  dependencies, `--list` prints the build order. Logs of failed compiles are in
+- `--target T` builds one target and its dependencies, `--list` prints the
+  build order. Logs of failed compiles are in
   `ios/build/xcbuild/failed/`, the last failed command in `last-failure.log`.
 - Release only, arm64 device only. The JS bundle is built by the project's own
   bundle script phase, so the phone needs no dev server.
