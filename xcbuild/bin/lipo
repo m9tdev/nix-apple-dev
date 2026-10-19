@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Linux stand-in for lipo: -info, -archs, -thin ARCH -output OUT, -remove ARCH -output OUT, -create."""
+"""Linux stand-in for lipo: -info, -archs, FILE -verify_arch ARCH..., -thin|-extract ARCH -output OUT."""
 import struct, sys
 CPU = {0x0100000c: "arm64", 0x01000007: "x86_64", 12: "armv7", 7: "i386", 0x0200000c: "arm64_32"}
 def parse(p):
@@ -28,11 +28,13 @@ a = sys.argv[1:]
 out = None
 if "-output" in a:
     i = a.index("-output"); out = a[i + 1]; del a[i:i + 2]
-if a[0] in ("-info", "-archs", "-verify_arch"):
+if "-verify_arch" in a:  # lipo FILE -verify_arch ARCH...: exit 0 if FILE has all of them
+    i = a.index("-verify_arch")
+    if i != 1: sys.exit("lipo shim: usage: lipo FILE -verify_arch ARCH...")
+    fat, sl = parse(a[0])
+    sys.exit(0 if all(x in [s[0] for s in sl] for x in a[i + 1:]) else 1)
+if a[0] in ("-info", "-archs"):
     op = a.pop(0)
-    if op == "-verify_arch":
-        f = a.pop(0); fat, sl = parse(f)
-        sys.exit(0 if all(x in [s[0] for s in sl] for x in a) else 1)
     for f in a:
         fat, sl = parse(f)
         archs = " ".join(s[0] for s in sl)
@@ -46,19 +48,4 @@ if a[0] in ("-thin", "-extract"):
     s = [x for x in sl if x[0] == arch]
     if not s: sys.exit("lipo: %s has no %s" % (f, arch))
     open(out, "wb").write(s[0][1]); sys.exit(0)
-if a[0] == "-remove":
-    arch, f = a[1], a[2]
-    fat, sl = parse(f)
-    keep = [x for x in sl if x[0] != arch]
-    if len(keep) == 1:
-        open(out, "wb").write(keep[0][1]); sys.exit(0)
-    hdr = struct.pack(">II", 0xcafebabe, len(keep)); body = b""; off = 4096
-    for name, data, ct, st, al in keep:
-        off = (off + (1 << 14) - 1) & ~((1 << 14) - 1)
-        hdr += struct.pack(">IIIII", ct, st, off, len(data), 14); off += len(data)
-    blob = bytearray(hdr.ljust(4096, b"\0"))
-    for name, data, ct, st, al in keep:
-        pos = (len(blob) + (1 << 14) - 1) & ~((1 << 14) - 1)
-        blob += b"\0" * (pos - len(blob)); blob += data
-    open(out, "wb").write(bytes(blob)); sys.exit(0)
 sys.exit("lipo shim: unsupported " + " ".join(sys.argv[1:]))

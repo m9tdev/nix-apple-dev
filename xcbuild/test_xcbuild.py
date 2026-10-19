@@ -92,8 +92,8 @@ class Lipo(unittest.TestCase):
             write(f, macho(0x0100000c))
             self.assertEqual(tool("lipo", "-archs", f).stdout, "arm64\n")
             self.assertEqual(tool("lipo", "-info", f).stdout, "Non-fat file: %s is architecture: arm64\n" % f)
-            self.assertEqual(tool("lipo", "-verify_arch", f, "arm64").returncode, 0)
-            self.assertNotEqual(tool("lipo", "-verify_arch", f, "x86_64").returncode, 0)
+            self.assertEqual(tool("lipo", f, "-verify_arch", "arm64").returncode, 0)
+            self.assertNotEqual(tool("lipo", f, "-verify_arch", "x86_64").returncode, 0)
             self.assertEqual(tool("lipo", "-thin", "arm64", f, "-output", out).returncode, 0)
             self.assertEqual(read(out), read(f))
 
@@ -109,6 +109,9 @@ class Lipo(unittest.TestCase):
             self.assertEqual(tool("lipo", "-thin", "arm64", f, "-output", out).returncode, 0)
             self.assertEqual(read(out), arm)
             self.assertNotEqual(tool("lipo", "-thin", "armv7", f, "-output", out).returncode, 0)
+            self.assertEqual(tool("lipo", f, "-verify_arch", "arm64").returncode, 0)
+            self.assertEqual(tool("lipo", f, "-verify_arch", "arm64", "x86_64").returncode, 0)
+            self.assertNotEqual(tool("lipo", f, "-verify_arch", "arm64", "armv7").returncode, 0)
 
 
 class XcodeVersion(unittest.TestCase):
