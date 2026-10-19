@@ -81,10 +81,21 @@
             inherit pyproject-nix uv2nix pyproject-build-systems;
           };
           upstream-patched = pkgs.callPackage ./pkgs/upstream.nix { src = upstream; };
-          ios-sdk = pkgs.callPackage ./pkgs/ios-sdk.nix {
-            inherit (tools) xtool open-apple-macros actool;
-            upstream = upstream-patched;
-          };
+          ios-sdk =
+            (pkgs.callPackage ./pkgs/ios-sdk.nix {
+              inherit (tools) xtool open-apple-macros actool;
+              upstream = upstream-patched;
+            }).overrideAttrs
+              (old: {
+                # Needs Xcode.xip, so not in `checks`:
+                #   nix build .#ios-sdk.tests.debug-cxx-interop
+                passthru = (old.passthru or { }) // {
+                  tests.debug-cxx-interop = pkgs.runCommand "debug-cxx-interop" { } ''
+                    bash ${./tests/debug-cxx-interop.sh} ${swift} ${ios-sdk}/darwin.artifactbundle
+                    touch $out
+                  '';
+                };
+              });
           xcbuild = pkgs.callPackage ./pkgs/xcbuild.nix { };
           apple-dev = pkgs.callPackage ./pkgs/fhs.nix {
             inherit mkFHSEnv;

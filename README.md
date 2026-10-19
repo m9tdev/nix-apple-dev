@@ -178,10 +178,13 @@ npx one dev --host 0.0.0.0 --port 8081      # or: npx expo start / npx react-nat
   that Fast Refresh doesn't re-apply, such as a layout's screen options, show
   after a reload or relaunch.
 - Swift's C++ interop header marks its inline thunks `used` when `DEBUG` is
-  defined, which makes clang instantiate all of them; some generic types then
-  exceed clang's template depth limit. `pkgs/swift.nix` and `pkgs/ios-sdk.nix`
-  remove that attribute from both copies of the header. It only keeps the
-  thunks visible to LLDB.
+  defined, which makes clang instantiate all of them;
+  `TypeMetadataTrait<swift::Optional<T>>` then recurses without bound, past
+  any template depth limit. `pkgs/swift.nix` and `pkgs/ios-sdk.nix` change
+  both copies of the header to mark them `used` only if
+  `SWIFT_CXX_INTEROP_USED_THUNKS` is defined. The attribute only keeps the
+  thunks visible to LLDB. The test needs the SDK:
+  `nix build .#ios-sdk.tests.debug-cxx-interop`.
 
 ## Notes
 
