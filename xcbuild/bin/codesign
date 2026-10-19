@@ -1,0 +1,4 @@
+#!/bin/sh
+# Builds are signed afterwards with sign-dev.sh (rcodesign); signing during the build is a no-op.
+echo "codesign (skipped on Linux; sign-dev.sh signs the app): $*" >&2
+exit 0

@@ -2,6 +2,11 @@
 # - patches/upstream-tools-on-path.patch: the scripts call xtool, ipsw and
 #   pymobiledevice3 from PATH (apple-dev puts the Nix packages there) instead
 #   of from $HOME/.local/bin and $HOME/pymobile3-venv;
+# - patches/ibtool-rn-launchscreen-labels.patch: ibtool compiles React Native's
+#   template LaunchScreen.storyboard (label clipsSubviews/minimumFontSize, bold
+#   system font, a 1/3 multiplier constraint to the root view); the app shows
+#   that storyboard while JS starts. Unverified against Apple goldens, see the patch;
+#   the golden self-test still passes (checks.ibtool-golden);
 # - install-toolchain.sh is replaced: Nix builds every piece it installs.
 { stdenvNoCC, src }:
 
@@ -10,7 +15,10 @@ stdenvNoCC.mkDerivation {
   version = "unstable-${builtins.substring 0 7 (src.rev or "local")}";
   inherit src;
 
-  patches = [ ../patches/upstream-tools-on-path.patch ];
+  patches = [
+    ../patches/upstream-tools-on-path.patch
+    ../patches/ibtool-rn-launchscreen-labels.patch
+  ];
   dontConfigure = true;
   dontBuild = true;
 

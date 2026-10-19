@@ -1,0 +1,4 @@
+#!/bin/sh
+# Linux stand-in for `otool -l` (React Native's scripts/spm read load commands).
+[ "$1" = -l ] && shift
+exec llvm-objdump --macho --private-headers "$@"

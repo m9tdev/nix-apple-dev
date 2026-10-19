@@ -1,3 +1,5 @@
 result
 result-*
 python/.venv/
+__pycache__/
+*.pyc

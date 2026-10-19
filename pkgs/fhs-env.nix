@@ -76,6 +76,12 @@ buildFHSEnv {
   profile = ''
     export PATH=${swift}/usr/bin:$PATH
     export SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt
+    # bubblewrap shows root-owned /home and /tmp as owned by nobody, and @swc/core
+    # (React Native / One bundlers) refuses to unpack its native addon below them.
+    # The sandbox root is ours: give it a cache there.
+    if [ -z "''${SWC_NATIVE_BINDING_CACHE:-}" ] && mkdir -p /.apple-dev-cache/swc 2>/dev/null; then
+      export SWC_NATIVE_BINDING_CACHE=/.apple-dev-cache/swc
+    fi
   ''
   + profile;
 

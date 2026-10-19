@@ -1,0 +1,10 @@
+#!/usr/bin/env python3
+"""Linux stand-in: only `xcodebuild -version` (podspecs and React Native scripts ask for it)."""
+import os, sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from xcode_version import XCODE_VERSION, XCODE_BUILD
+if sys.argv[1:2] == ["-version"]:
+    print("Xcode " + XCODE_VERSION)
+    print("Build version " + XCODE_BUILD)
+    sys.exit(0)
+sys.exit("xcodebuild is not available on Linux; use apple-dev-xcbuild")
