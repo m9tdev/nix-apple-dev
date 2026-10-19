@@ -239,6 +239,19 @@ def write_if_changed(path, data):
 _digests = {}
 _digests_lock = threading.Lock()
 RACY_NS = 2 * 10**9
+# How far a file's mtime may lag the clock: the kernel dates writes with a clock updated
+# once per tick (at most 10 ms, at HZ=100); two ticks for margin.
+CLOCK_LAG_NS = 20 * 10**6
+
+def mtime_margin(mtime_ns):
+    """How long before a step's start a file written after the start may be dated: the
+    clock lag, plus twice the file system's timestamp granularity, which shows in the
+    mtime's trailing zeros (ext4, btrfs: ns; exFAT: 10 ms; FAT: 2 s; whole seconds, from a
+    coarse file system or a tool that set them: 2 s)."""
+    g = 1
+    while g < 10**9 and mtime_ns % (g * 10) == 0:
+        g *= 10
+    return CLOCK_LAG_NS + 2 * g
 
 def file_digest(p):
     """sha256 of a regular file's content, or None (missing, a directory...)."""
@@ -406,8 +419,8 @@ class Steps:
     def record(self, key, cmd, inputs, since, outputs, cwd=None, skip=()):
         """inputs: the files the step read; since: when it started (time.time_ns()). An input
         modified after that may not be in the output, so the step runs again next time; so
-        does one modified within the timestamp margin before it (a write just after the
-        start may get an earlier mtime), unless this build wrote it.
+        does one modified within mtime_margin before it (a write just after the start may
+        get an earlier mtime), unless this build wrote it.
         outputs: the files it wrote; skip: path prefixes not to record (the SDK and the
         toolchain, which the record's env identifies)."""
         ins = {}
@@ -420,7 +433,8 @@ class Steps:
             except OSError:
                 ins[p] = [0, 0, ""]
                 continue
-            settled = st.st_mtime_ns < since - RACY_NS or (p in self.ours and st.st_mtime_ns < since)
+            settled = st.st_mtime_ns < since - mtime_margin(st.st_mtime_ns) \
+                or (p in self.ours and st.st_mtime_ns < since)
             d = file_digest(p) if settled else None
             ins[p] = [st.st_mtime_ns, st.st_size, d or ""]
         outs = {o: output_sig(o) for o in outputs}

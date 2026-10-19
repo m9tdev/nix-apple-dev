@@ -250,15 +250,33 @@ class Steps(unittest.TestCase):
         self.assertFalse(s.fresh(self.out, ("cc",), [self.out]))
 
     def test_input_changed_just_before_step(self):
-        # written within the timestamp margin before the step's start: it may have been
-        # written after the start with an earlier mtime, so it is not trusted
+        # written within the margin before the step's start: it may have been written after
+        # the start with an earlier mtime, so it is not trusted
+        t = time.time_ns() - 10**9 + 123  # an mtime as a file system with ns timestamps gives
+        os.utime(self.src, ns=(t, t))
         s = self.steps()
-        s.record(self.out, ("cc",), [self.src], time.time_ns() + 10**6, [self.out])
+        s.record(self.out, ("cc",), [self.src], t + 5 * 10**6, [self.out])
         self.assertFalse(s.fresh(self.out, ("cc",), [self.out]))
         # unless this build wrote it (another step's output): nothing else writes those
         s = x.Steps(self.db, "tools", ours={self.src})
-        s.record(self.out, ("cc",), [self.src], time.time_ns() + 10**6, [self.out])
+        s.record(self.out, ("cc",), [self.src], t + 5 * 10**6, [self.out])
         self.assertTrue(s.fresh(self.out, ("cc",), [self.out]))
+        # a moment later is past the margin
+        s = self.steps()
+        s.record(self.out, ("cc",), [self.src], t + 10**8, [self.out])
+        self.assertTrue(s.fresh(self.out, ("cc",), [self.out]))
+        # but not with whole-second timestamps (a coarse file system: FAT dates in 2 s steps)
+        t = (time.time_ns() // 10**9 - 5) * 10**9
+        os.utime(self.src, ns=(t, t))
+        s.record(self.out, ("cc",), [self.src], t + 10**9, [self.out])
+        self.assertFalse(s.fresh(self.out, ("cc",), [self.out]))
+
+    def test_mtime_margin(self):
+        lag = x.CLOCK_LAG_NS
+        self.assertEqual(x.mtime_margin(1760000000123456789), lag + 2)
+        self.assertEqual(x.mtime_margin(1760000000120000000), lag + 2 * 10**7)  # exFAT: 10 ms
+        self.assertEqual(x.mtime_margin(1760000000000000000), lag + 2 * 10**9)  # whole seconds
+        self.assertEqual(x.mtime_margin(0), lag + 2 * 10**9)
 
     def test_declared_output_never_written(self):
         gone = os.path.join(self.d, "never.txt")
@@ -505,6 +523,15 @@ class Incremental(unittest.TestCase):
 
     def members(self):
         return subprocess.run(["llvm-ar", "t", self.lib()], capture_output=True, text=True, check=True).stdout.split()
+
+    def test_edit_then_build_at_once(self):
+        # an edit made a moment before the build (not backdated) is compiled once, not again
+        # by the next build
+        self.build()
+        write(os.path.join(self.src, "include/a.h"), "#define A 2\n")
+        time.sleep(0.1)
+        self.assertEqual(self.build(), ["a.o"])
+        self.assertEqual(self.build(), [])
 
     def test_nothing_changed(self):
         self.assertEqual(self.build(), ["a.o", "b.o"])
