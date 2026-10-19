@@ -1,5 +1,5 @@
 """Unit tests for xcbuild.py: build settings like Xcode, header maps clang can read."""
-import ipaddress, os, shutil, struct, subprocess, sys, tempfile, unittest
+import ipaddress, json, os, shutil, struct, subprocess, sys, tempfile, time, unittest
 from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import xcbuild as x
@@ -235,7 +235,7 @@ class Steps(unittest.TestCase):
 
     def recorded(self, cmd=("cc", "a.c")):
         s = self.steps()
-        s.record(self.out, cmd, [self.src], since=time_ns_later())
+        s.record(self.out, cmd, [self.src], time_ns_later(), [self.out])
         s.save()
 
     def test_unchanged(self):
@@ -260,12 +260,12 @@ class Steps(unittest.TestCase):
 
     def test_input_changed_during_step(self):
         s = self.steps()
-        s.record(self.out, ("cc",), [self.src], since=0)  # the input is newer than the step
+        s.record(self.out, ("cc",), [self.src], 0, [self.out])  # the input is newer than the step
         self.assertFalse(s.fresh(self.out, ("cc",), [self.out]))
 
     def test_missing_input_and_directory(self):
         s = self.steps()
-        s.record(self.out, ("cc",), [os.path.join(self.d, "gone.h"), self.d], since=time_ns_later())
+        s.record(self.out, ("cc",), [os.path.join(self.d, "gone.h"), self.d], time_ns_later(), [self.out])
         self.assertFalse(s.fresh(self.out, ("cc",), [self.out]))
 
     def test_forget(self):
@@ -274,9 +274,58 @@ class Steps(unittest.TestCase):
         s.forget(self.out)
         self.assertFalse(s.fresh(self.out, ("cc", "a.c"), [self.out]))
 
+    def test_forget_on_disk_before_save(self):
+        # a build killed while the step runs: the next one reads the record without it
+        self.recorded()
+        self.steps().forget(self.out)
+        self.assertFalse(self.steps().fresh(self.out, ("cc", "a.c"), [self.out]))
+        s = self.steps()
+        s.record(self.out, ("cc", "a.c"), [self.src], time_ns_later(), [self.out])
+        s.save()
+        self.assertFalse(os.path.exists(self.db + ".forget"))
+        self.assertTrue(self.steps().fresh(self.out, ("cc", "a.c"), [self.out]))
+
+    def test_output_written_after_record(self):
+        # the step ran again but its new record was lost: the output is not the recorded one
+        self.recorded()
+        tmp = self.out + ".tmp"
+        write(tmp, "obj")
+        st = os.stat(self.out)
+        os.utime(tmp, ns=(st.st_atime_ns, st.st_mtime_ns))
+        os.replace(tmp, self.out)  # same bytes and mtime, new inode
+        self.assertFalse(self.steps().fresh(self.out, ("cc", "a.c"), [self.out]))
+        self.recorded()
+        write(self.out, "objv2")
+        self.assertFalse(self.steps().fresh(self.out, ("cc", "a.c"), [self.out]))
+
+    def test_old_record_without_outputs(self):
+        self.recorded()
+        db = json.load(open(self.db))
+        del db[self.out]["out"]
+        write(self.db, json.dumps(db))
+        self.assertFalse(self.steps().fresh(self.out, ("cc", "a.c"), [self.out]))
+
+    def test_rehashed_input_trusted_after(self):
+        # an input touched with the same content is hashed once, then trusted by mtime
+        self.recorded()
+        time.sleep(0.05)
+        t = time.time_ns() - 10**7  # after the record
+        os.utime(self.src, ns=(t, t))
+        s = self.steps()
+        with mock.patch.object(x, "RACY_NS", 0):
+            self.assertTrue(s.fresh(self.out, ("cc", "a.c"), [self.out]))
+            with mock.patch.object(x, "file_digest", side_effect=AssertionError("rehashed")):
+                self.assertTrue(s.fresh(self.out, ("cc", "a.c"), [self.out]))
+
+    def test_clean(self):
+        self.recorded()
+        self.steps().forget("other")
+        s = x.Steps(self.db, "tools", clean=True)
+        self.assertFalse(s.fresh(self.out, ("cc", "a.c"), [self.out]))
+        self.assertFalse(os.path.exists(self.db) or os.path.exists(self.db + ".forget"))
+
 
 def time_ns_later():
-    import time
     return time.time_ns() + 10**9
 
 
