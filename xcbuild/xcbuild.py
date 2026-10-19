@@ -193,17 +193,8 @@ def split_words(s):
 
 # ---------------------------------------------------------------- header maps
 
-_hmaps = {}
-_hmaps_lock = threading.Lock()
-
 def write_hmap(path, mapping):
-    """Apple header map: key (case-insensitive) -> prefix + suffix.
-
-    Every source file of a target asks for the same maps; a map already written in this
-    run with the same entries is not built again."""
-    with _hmaps_lock:
-        if _hmaps.get(path) == mapping:
-            return
+    """Apple header map: key (case-insensitive) -> prefix + suffix."""
     strings = bytearray(b"\0")
     offs = {}
     def sidx(s):
@@ -231,8 +222,6 @@ def write_hmap(path, mapping):
         data += struct.pack("<III", *b)
     data += bytes(strings)
     write_if_changed(path, data)
-    with _hmaps_lock:
-        _hmaps[path] = dict(mapping)
 
 def write_if_changed(path, data):
     """Leave a file that already has these bytes alone (no new mtime for the next build)."""
@@ -345,6 +334,7 @@ class Steps:
         self.journal = path + ".forget"
         self.env = env        # tools, SDK and this script: a new toolchain rebuilds everything
         self.lock = threading.Lock()
+        self.seen = set()     # steps of this build, to prune the others
         self.db = {}
         if clean:
             for f in (path, self.journal):
@@ -373,6 +363,7 @@ class Steps:
         """key: the step's name in the record (its main output); outputs: files it writes."""
         now = time.time_ns()
         with self.lock:
+            self.seen.add(key)
             rec = self.db.get(key)
         if not rec or rec["cmd"] != self.key(cmd, cwd):
             return False
@@ -421,16 +412,28 @@ class Steps:
             ins[p] = [st.st_mtime_ns, st.st_size, d or ""]
         outs = {o: output_sig(o) for o in outputs}
         with self.lock:
+            self.seen.add(key)
             self.db[key] = {"cmd": self.key(cmd, cwd), "in": ins, "out": outs, "at": time.time_ns()}
 
     def forget(self, *keys):
         """Steps about to run: out of the record, here and on disk, before they start."""
         with self.lock:
             for k in keys:
+                self.seen.add(k)
                 self.db.pop(k, None)
             os.makedirs(os.path.dirname(self.path), exist_ok=True)
             with open(self.journal, "a", encoding="utf-8", errors="surrogateescape") as f:
                 f.write("".join(k + "\n" for k in keys))
+
+    def outputs(self, key):
+        with self.lock:
+            return list((self.db.get(key) or {}).get("out") or {})
+
+    def prune(self):
+        """Drop the steps this build didn't have (a removed source); returns their outputs."""
+        with self.lock:
+            gone = [k for k in self.db if k not in self.seen]
+            return [o for k in gone for o in self.db.pop(k).get("out") or {}]
 
     def save(self):
         os.makedirs(os.path.dirname(self.path), exist_ok=True)
@@ -1019,6 +1022,7 @@ class Build:
         if self.steps.fresh(modfile, cmd, outs, cwd=objdir):
             log("  swiftc: %d files (up to date)" % len(files))
             return objs
+        before = self.steps.outputs(modfile)
         self.steps.forget(modfile)
         log("  swiftc: %d files" % len(files))
         # whole-module mode writes one dependency file for the module, incremental mode one
@@ -1039,6 +1043,7 @@ class Build:
                 return objs
             inputs += found
         self.steps.record(modfile, cmd, sorted(set(inputs + hmap_inputs(cmd))), since, outs, cwd=objdir, skip=self.skip)
+        remove_objects(set(before) - set(outs), objdir)  # removed sources
         return objs
 
     # -- products
@@ -1174,6 +1179,8 @@ class Build:
         self.steps = Steps(os.path.join(s.get("TARGET_TEMP_DIR"), "xcbuild-steps.json"), self.step_env, clean=self.clean)
         try:
             self.build_phases(t, s, typ, wrap)
+            # objects of removed sources: out of the record and off the disk
+            remove_objects(self.steps.prune(), s.get("TARGET_TEMP_DIR"))
         finally:
             self.steps.save()
         if wrap and (typ.endswith("bundle") or typ.endswith("application")):
@@ -1300,6 +1307,16 @@ class Build:
         ins = read_dependency_info(info, cwd)
         if ins:
             self.steps.record(exe, cmd, ins + objs, since, [exe], cwd=cwd, skip=self.skip)
+
+def remove_objects(paths, under):
+    """Delete the object files (and their dependency files) among paths that are in the
+    directory under."""
+    under = os.path.join(under, "")
+    for o in paths:
+        if o.endswith(".o") and o.startswith(under):
+            for f in (o, o + ".d", o[:-2] + ".d", o[:-2] + ".swiftdeps"):
+                if os.path.isfile(f):
+                    os.remove(f)
 
 def xcode_bool(v):
     """A project's boolean attribute: xcodeproj gives strings ("0", "1")."""

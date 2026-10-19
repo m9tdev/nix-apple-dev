@@ -85,24 +85,10 @@ class HeaderMap(unittest.TestCase):
             p = os.path.join(d, "t.hmap")
             x.write_hmap(p, {"a.h": "/s/a.h"})
             os.utime(p, ns=(1, 1))
-            x._hmaps.clear()  # as in the next build
             x.write_hmap(p, {"a.h": "/s/a.h"})
             self.assertEqual(os.stat(p).st_mtime_ns, 1)
             x.write_hmap(p, {"b.h": "/s/b.h"})
             self.assertNotEqual(os.stat(p).st_mtime_ns, 1)
-
-    def test_same_map_built_once_per_run(self):
-        with tempfile.TemporaryDirectory() as d:
-            p = os.path.join(d, "t.hmap")
-            m = {"a.h": "/s/a.h"}
-            x.write_hmap(p, m)
-            with mock.patch.object(x, "write_if_changed") as w:
-                x.write_hmap(p, dict(m))
-                w.assert_not_called()
-                m["b.h"] = "/s/b.h"  # the memo holds a copy, not the caller's dict
-                x.write_hmap(p, m)
-                w.assert_called_once()
-            self.assertEqual(self.lookup(p, "b.h"), None)  # mocked write left the old file
 
 
 def macho(cputype):
@@ -325,6 +311,26 @@ class Steps(unittest.TestCase):
         s = self.steps()
         s.record(self.out, ("cc",), [self.src, h], time_ns_later(), [self.out], skip=(sdk + "/",))
         self.assertEqual(list(s.db[self.out]["in"]), [self.src])
+
+    def test_prune(self):
+        self.recorded()
+        s = self.steps()
+        s.record("b.o", ("cc", "b.c"), [], time_ns_later(), ["b.o"])
+        s.save()
+        s = self.steps()
+        self.assertTrue(s.fresh(self.out, ("cc", "a.c"), [self.out]))
+        self.assertEqual(s.prune(), ["b.o"])
+        self.assertEqual(list(s.db), [self.out])
+
+    def test_remove_objects(self):
+        objs = os.path.join(self.d, "obj")
+        os.mkdir(objs)
+        files = [os.path.join(objs, f) for f in ("b.o", "b.o.d", "b.d", "b.swiftdeps", "keep.txt")]
+        for f in files:
+            write(f, "")
+        x.remove_objects([files[0], files[4], self.out], objs)
+        self.assertEqual(os.listdir(objs), ["keep.txt"])
+        self.assertTrue(os.path.exists(self.out))  # not in that directory
 
     def test_clean(self):
         self.recorded()
