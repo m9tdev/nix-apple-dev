@@ -5,7 +5,8 @@ and the React Native and Expo templates write them.
 usage: actool_app_icons.py ACTOOL
 
 - partly filled: the empty slots are skipped, the filled ones compile, and
-  actool prints Apple's warning for an empty required size;
+  actool prints Apple's warning for each empty required size of the target
+  devices;
 - empty: no icon, no warning, no error."""
 import json, os, plistlib, struct, subprocess, sys, tempfile, zlib
 
@@ -40,12 +41,12 @@ def catalog(root, filled):
     return cat
 
 
-def compile(root, cat):
+def compile(root, cat, devices=("iphone",)):
     out = os.path.join(root, "out")
     os.makedirs(out)
     r = subprocess.run([ACTOOL, "--output-format", "human-readable-text", "--notices", "--warnings",
                         "--platform", "iphoneos", "--minimum-deployment-target", "15.1",
-                        "--target-device", "iphone", "--app-icon", "AppIcon",
+                        *[a for d in devices for a in ("--target-device", d)], "--app-icon", "AppIcon",
                         "--output-partial-info-plist", os.path.join(out, "partial.plist"),
                         "--compile", out, cat], capture_output=True, text=True)
     print(r.stdout, r.stderr, sep="")
@@ -65,6 +66,15 @@ with tempfile.TemporaryDirectory() as root:
     assert b"icon-20x20" not in car
     assert sorted(f for f in os.listdir(out) if f.endswith(".png")) == ["AppIcon60x60@2x.png", "AppIcon60x60@3x.png"]
     assert partial["CFBundleIcons"]["CFBundlePrimaryIcon"]["CFBundleIconFiles"] == ["AppIcon60x60"], partial
+
+with tempfile.TemporaryDirectory() as root:
+    cat = catalog(root, {("iphone", "60x60", "2x"), ("iphone", "60x60", "3x")})
+    out, stdout, partial = compile(root, cat, ("iphone", "ipad"))
+    warnings = [l for l in stdout.splitlines() if ": warning: " in l]
+    assert warnings == [cat + ":./AppIcon.appiconset: warning: " + w for w in (
+        "A 76x76@2x app icon is required for iPad apps targeting iOS 7.0 and later",
+        "A 83.5x83.5@2x app icon is required for iPad apps targeting iOS 9.0 and later",
+        "A 1024x1024 app store icon is required for iOS apps")], warnings
 
 with tempfile.TemporaryDirectory() as root:
     out, stdout, partial = compile(root, catalog(root, set()))
