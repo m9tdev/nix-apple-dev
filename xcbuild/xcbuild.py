@@ -1331,6 +1331,15 @@ def expand_recursive(p):
         return out or [root]
     return [p]
 
+def stop_on_signals():
+    """SIGTERM and SIGHUP end the build like Ctrl-C: running compiles finish, the record is
+    saved. A signal that is ignored (nohup) stays ignored."""
+    def stop(sig, frame):
+        raise SystemExit("xcbuild: stopped by signal %d" % sig)
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        if signal.getsignal(sig) is not signal.SIG_IGN:
+            signal.signal(sig, stop)
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--workspace-dir", default="ios")
@@ -1349,11 +1358,7 @@ def main():
     if a.clean and a.incremental:
         ap.error("--clean and --incremental exclude each other")
     a.clean = a.clean or (a.configuration != "Debug" and not a.incremental)
-    # SIGTERM and SIGHUP end the build like Ctrl-C: running compiles finish, the record is saved
-    def stop(sig, frame):
-        raise SystemExit("xcbuild: stopped by signal %d" % sig)
-    for sig in (signal.SIGTERM, signal.SIGHUP):
-        signal.signal(sig, stop)
+    stop_on_signals()
     a.derived_data = a.derived_data or os.path.join(os.path.abspath(a.workspace_dir), "build", "xcbuild")
     os.makedirs(a.derived_data, exist_ok=True)
     # one build at a time in a build directory: they would share objects and records

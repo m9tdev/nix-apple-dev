@@ -1,5 +1,5 @@
 """Unit tests for xcbuild.py: build settings like Xcode, header maps clang can read."""
-import ipaddress, json, os, shutil, struct, subprocess, sys, tempfile, time, types, unittest
+import ipaddress, json, os, shutil, signal, struct, subprocess, sys, tempfile, time, types, unittest
 from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import xcbuild as x
@@ -377,6 +377,23 @@ class DepFiles(unittest.TestCase):
     def test_hmap_inputs(self):
         cmd = ["clang", "-iquote", "/t/gen.hmap", "-I/t/own.hmap", "-Xcc", "-I/t/all.hmap", "-I/inc"]
         self.assertEqual(x.hmap_inputs(cmd), ["/t/gen.hmap", "/t/own.hmap", "/t/all.hmap"])
+
+
+class Signals(unittest.TestCase):
+    def test_ignored_signal_stays_ignored(self):
+        # nohup: SIGHUP ignored before the build starts
+        old = {sig: signal.getsignal(sig) for sig in (signal.SIGTERM, signal.SIGHUP)}
+        try:
+            signal.signal(signal.SIGHUP, signal.SIG_IGN)
+            signal.signal(signal.SIGTERM, signal.SIG_DFL)
+            x.stop_on_signals()
+            self.assertIs(signal.getsignal(signal.SIGHUP), signal.SIG_IGN)
+            self.assertTrue(callable(signal.getsignal(signal.SIGTERM)))
+            with self.assertRaises(SystemExit):
+                signal.raise_signal(signal.SIGTERM)
+        finally:
+            for sig, h in old.items():
+                signal.signal(sig, h)
 
 
 def make_build(root, settings, sources, phases=(), clean=False):
