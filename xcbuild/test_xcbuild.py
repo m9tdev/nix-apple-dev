@@ -260,6 +260,12 @@ class Steps(unittest.TestCase):
         s.record(self.out, ("cc",), [self.src], time.time_ns() + 10**6, [self.out])
         self.assertTrue(s.fresh(self.out, ("cc",), [self.out]))
 
+    def test_declared_output_never_written(self):
+        gone = os.path.join(self.d, "never.txt")
+        s = self.steps()
+        s.record("script", ("sh",), [self.src], time_ns_later(), [self.out, gone])
+        self.assertFalse(s.fresh("script", ("sh",), [self.out, gone]))
+
     def test_missing_input_and_directory(self):
         s = self.steps()
         s.record(self.out, ("cc",), [os.path.join(self.d, "gone.h"), self.d], time_ns_later(), [self.out])
@@ -584,6 +590,16 @@ class Incremental(unittest.TestCase):
             os.remove(self.temp("xcbuild-steps.json.forget"))
             self.build()
         self.assertNotEqual(read(self.obj("a.o")), clean_v1)
+
+    def test_script_output_not_written(self):
+        # a declared output the script never writes: it runs every build, as in Xcode
+        self.put("decl.txt", "declared")
+        self.phases = [{"isa": "PBXShellScriptBuildPhase", "name": "Check", "shell": "/bin/sh",
+                        "inputs": ["$(SRCROOT)/decl.txt"], "outputs": ["$(DERIVED_FILE_DIR)/never.txt"],
+                        "script": "echo run >> runs\n"}]
+        self.build()
+        self.build()
+        self.assertEqual(len(read(os.path.join(self.src, "runs")).splitlines()), 2)
 
     def test_script_dependency_file(self):
         runs = os.path.join(self.src, "runs")

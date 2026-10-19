@@ -371,8 +371,13 @@ class Steps:
         if not rec or rec["cmd"] != self.key(cmd, cwd):
             return False
         outs = rec.get("out") or {}
-        if sorted(outs) != sorted(outputs) or any(output_sig(o) != outs[o] for o in outputs):
+        if sorted(outs) != sorted(outputs):
             return False
+        for o in outputs:
+            # a declared output the step didn't write: it runs every time, as in Xcode
+            sig = output_sig(o)
+            if sig is None or sig != outs[o]:
+                return False
         # mtime and size are trusted only for files older than the record by more than the
         # file system's timestamp granularity; a newer one may have changed within the same tick
         racy = rec.get("at", 0) - RACY_NS
