@@ -1,5 +1,5 @@
 """Unit tests for xcbuild.py: build settings like Xcode, header maps clang can read."""
-import ipaddress, json, os, shutil, struct, subprocess, sys, tempfile, time, unittest
+import ipaddress, json, os, shutil, struct, subprocess, sys, tempfile, time, types, unittest
 from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import xcbuild as x
@@ -286,7 +286,7 @@ class Steps(unittest.TestCase):
 
     def test_old_record_without_outputs(self):
         self.recorded()
-        db = json.load(open(self.db))
+        db = json.loads(read(self.db))
         del db[self.out]["out"]
         write(self.db, json.dumps(db))
         self.assertFalse(self.steps().fresh(self.out, ("cc", "a.c"), [self.out]))
@@ -377,6 +377,187 @@ class DepFiles(unittest.TestCase):
     def test_hmap_inputs(self):
         cmd = ["clang", "-iquote", "/t/gen.hmap", "-I/t/own.hmap", "-Xcc", "-I/t/all.hmap", "-I/inc"]
         self.assertEqual(x.hmap_inputs(cmd), ["/t/gen.hmap", "/t/own.hmap", "/t/all.hmap"])
+
+
+def make_build(root, settings, sources, phases=(), clean=False):
+    """A Build of one static library target, Lib, in root (src/, build/), as main() makes
+    one from a workspace, without the project reader or the iOS SDK."""
+    src = os.path.join(root, "src")
+    b = x.Build.__new__(x.Build)
+    b.a = types.SimpleNamespace(clean=clean, bundle_id=None)
+    b.config, b.clean = "Debug", clean
+    b.devdir = os.path.join(root, "Developer")
+    b.sdkroot = os.path.join(b.devdir, "SDKs", "iPhoneOS27.0.sdk")
+    os.makedirs(b.sdkroot, exist_ok=True)
+    b.toolchain = os.path.join(b.devdir, "Toolchains/XcodeDefault.xctoolchain")
+    b.toolchain_include = os.path.join(b.toolchain, "usr/include")
+    b.derived = os.path.join(root, "build")
+    b.build_dir = os.path.join(b.derived, "Build/Products")
+    b.obj_root = os.path.join(b.derived, "Build/Intermediates.noindex")
+    b.module_cache = os.path.join(b.derived, "ModuleCache.noindex")
+    b.step_env = "test tools"
+    b.skip = (os.path.join(b.devdir, ""),)
+    proj = {"name": "P", "path": os.path.join(src, "P.xcodeproj"), "srcroot": src,
+            "project": {"settings": {}}, "header_refs": [], "targets": []}
+    t = {"name": "Lib", "type": "com.apple.product-type.library.static", "project": proj, "deps": [],
+         "headers": [], "config": {"settings": dict(settings)},
+         "phases": list(phases) + [{"isa": "PBXSourcesBuildPhase",
+                                    "files": [{"path": os.path.join(src, f)} for f in sources]}]}
+    b.ws = src
+    b.projects, b.targets, b.all_headers = [proj], {"Lib": t}, {}
+    return b
+
+
+@unittest.skipUnless(shutil.which("clang") and shutil.which("llvm-ar"), "needs clang and llvm-ar on PATH")
+class Incremental(unittest.TestCase):
+    """Builds with clang through the real compile, archive and record steps (arm64 objects,
+    no SDK headers): a step is redone exactly when its inputs changed."""
+
+    SETTINGS = {"HEADER_SEARCH_PATHS": "$(SRCROOT)/include", "GCC_PREPROCESSOR_DEFINITIONS": "VALUE=1",
+                "OTHER_CFLAGS": "-isystem $(SRCROOT)/pods/Pod"}
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = self.tmp.name
+        self.src = os.path.join(self.root, "src")
+        for d in ("include", "pods/Pod"):
+            os.makedirs(os.path.join(self.src, d))
+        self.put("include/a.h", "#define A 1\n")
+        self.put("pods/Pod/pod.h", "#define POD 1\n")  # on an -isystem path
+        self.put("a.c", '#include "a.h"\n#include <pod.h>\nint a(void) { return A + POD; }\n')
+        self.put("b.c", "int b(void) { return VALUE; }\n")
+        self.settings = dict(self.SETTINGS)
+        self.sources = ["a.c", "b.c"]
+        self.phases = []
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def put(self, rel, text):
+        write(os.path.join(self.src, rel), text)
+
+    def build(self, clean=False):
+        """Builds; returns the objects that were compiled (by name)."""
+        before = {o: x.output_sig(self.obj(o)) for o in ("a.o", "b.o")}
+        b = make_build(self.root, self.settings, self.sources, self.phases, clean)
+        with mock.patch.object(x, "log"):
+            b.build_target("Lib")
+        return sorted(o for o in before if os.path.exists(self.obj(o)) and x.output_sig(self.obj(o)) != before[o])
+
+    def temp(self, name):
+        return os.path.join(self.root, "build/Build/Intermediates.noindex/P.build/Debug-iphoneos/Lib.build", name)
+
+    def obj(self, name):
+        return self.temp(os.path.join("Objects-normal/arm64", name))
+
+    def members(self):
+        lib = os.path.join(self.root, "build/Build/Products/Debug-iphoneos/libLib.a")
+        return subprocess.run(["llvm-ar", "t", lib], capture_output=True, text=True, check=True).stdout.split()
+
+    def test_nothing_changed(self):
+        self.assertEqual(self.build(), ["a.o", "b.o"])
+        self.assertEqual(self.build(), [])
+        self.assertEqual(self.members(), ["a.o", "b.o"])
+
+    def test_header_edit(self):
+        self.build()
+        self.put("include/a.h", "#define A 2\n")
+        self.assertEqual(self.build(), ["a.o"])
+        self.put("include/a.h", "#define A 2\n")  # same content, new mtime
+        self.assertEqual(self.build(), [])
+
+    def test_isystem_header_edit(self):
+        self.build()
+        self.put("pods/Pod/pod.h", "#define POD 2\n")
+        self.assertEqual(self.build(), ["a.o"])
+
+    def test_define_and_flag_change(self):
+        self.build()
+        self.settings["GCC_PREPROCESSOR_DEFINITIONS"] = "VALUE=2"
+        self.assertEqual(self.build(), ["a.o", "b.o"])
+        self.settings["GCC_OPTIMIZATION_LEVEL"] = "0"
+        self.assertEqual(self.build(), ["a.o", "b.o"])
+
+    def test_clean(self):
+        self.build()
+        self.assertEqual(self.build(clean=True), ["a.o", "b.o"])
+
+    def test_deleted_source(self):
+        self.build()
+        os.remove(os.path.join(self.src, "b.c"))
+        self.sources = ["a.c"]
+        self.assertEqual(self.build(), [])
+        self.assertEqual(self.members(), ["a.o"])
+        self.assertFalse(os.path.exists(self.obj("b.o")) or os.path.exists(self.obj("b.o.d")))
+        steps = json.loads(read(self.temp("xcbuild-steps.json")))
+        self.assertNotIn(self.obj("b.o"), steps)
+
+    def killed_after_compile(self):
+        """The header goes v1 -> v2, a build compiles a.o and is killed before it saves its
+        record, the header goes back to v1. Returns (a clean build's a.o, the next build's)."""
+        self.build()
+        clean_v1 = read(self.obj("a.o"))
+        self.put("include/a.h", "#define A 2\n")
+        here = os.path.dirname(os.path.abspath(__file__))
+        code = ("import os, sys, json; sys.path.insert(0, %r); import xcbuild as x, test_xcbuild as T\n"
+                "x.Build.archive = lambda *a: os._exit(9)\n"  # killed between compile and save
+                "b = T.make_build(*json.loads(sys.argv[1]))\n"
+                "b.build_target('Lib')\n" % here)
+        r = subprocess.run([sys.executable, "-c", code, json.dumps([self.root, self.settings, self.sources])],
+                           capture_output=True, text=True)
+        self.assertEqual(r.returncode, 9, r.stdout + r.stderr)
+        self.assertNotEqual(read(self.obj("a.o")), clean_v1)
+        self.put("include/a.h", "#define A 1\n")
+        return clean_v1
+
+    def test_killed_build(self):
+        clean_v1 = self.killed_after_compile()
+        self.assertEqual(self.build(), ["a.o"])
+        self.assertEqual(read(self.obj("a.o")), clean_v1)
+
+    def test_killed_build_output_check_alone(self):
+        clean_v1 = self.killed_after_compile()
+        journal = self.temp("xcbuild-steps.json.forget")
+        os.remove(journal)
+        self.build()
+        self.assertEqual(read(self.obj("a.o")), clean_v1)
+
+    def test_killed_build_journal_alone(self):
+        with mock.patch.object(x, "output_sig", lambda p: "same"):
+            clean_v1 = self.killed_after_compile()
+            self.build()
+        self.assertEqual(read(self.obj("a.o")), clean_v1)
+
+    def test_killed_build_unguarded(self):
+        # the case both guard against: without them the stale object stays
+        with mock.patch.object(x, "output_sig", lambda p: "same"):
+            clean_v1 = self.killed_after_compile()
+            os.remove(self.temp("xcbuild-steps.json.forget"))
+            self.build()
+        self.assertNotEqual(read(self.obj("a.o")), clean_v1)
+
+    def test_script_dependency_file(self):
+        runs = os.path.join(self.src, "runs")
+        self.put("decl.txt", "declared")
+        self.put("dep.txt", "listed in the dependency file")
+        self.phases = [{"isa": "PBXShellScriptBuildPhase", "name": "Gen", "shell": "/bin/sh", "always": "0",
+                        "inputs": ["$(SRCROOT)/decl.txt"], "outputs": ["$(DERIVED_FILE_DIR)/out.txt"],
+                        "dependency_file": "$(DERIVED_FILE_DIR)/gen.d",
+                        "script": 'echo run >> runs\ncp dep.txt "$DERIVED_FILE_DIR/out.txt"\n'
+                                  'echo "$DERIVED_FILE_DIR/out.txt: dep.txt" > "$DERIVED_FILE_DIR/gen.d"\n'}]
+        count = lambda: len(read(runs).splitlines())
+        self.build()
+        self.build()
+        self.assertEqual(count(), 1)
+        self.put("dep.txt", "changed")
+        self.build()
+        self.assertEqual(count(), 2)
+        os.remove(self.temp("DerivedSources/gen.d"))
+        self.build()
+        self.assertEqual(count(), 3)
+        self.phases[0]["always"] = "1"
+        self.build()
+        self.assertEqual(count(), 4)
 
 
 if __name__ == "__main__":
