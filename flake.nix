@@ -21,7 +21,7 @@
     };
     # The scripts that do the user-space part (xtool, SDK, signing, device runs).
     upstream = {
-      url = "github:joshuaswarren/omarchy-apple-dev/b19eb10f8de3b5039746750e21d480002b0a9819";
+      url = "github:joshuaswarren/omarchy-apple-dev/172e28cff7b6d5adebfa49f93957d6a864378dfb";
       flake = false;
     };
   };
@@ -183,9 +183,10 @@
             PATH=${p.swift}/usr/bin:$PATH ${pkgs.python3}/bin/python3 ${./xcbuild}/test_xcbuild.py
             touch $out
           '';
-          # Upstream ibtool's golden self-test, with this repo's ibtool patch applied.
+          # Upstream ibtool's golden self-test and its React Native launch screen test.
           ibtool-golden = pkgs.runCommand "ibtool-golden" { } ''
             ${pkgs.python3}/bin/python3 ${p.upstream-patched}/tools/ibtool --self-test
+            ${pkgs.python3}/bin/python3 ${p.upstream-patched}/tests/test_ibtool_react_native.py
             touch $out
           '';
           xtool-runs = pkgs.runCommand "xtool-runs" { } ''

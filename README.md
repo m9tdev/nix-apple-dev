@@ -183,9 +183,8 @@ sign-dev.sh $app app.ipa && pymobiledevice3 apps install app.ipa
   Linux build of the same version.
 - If the Linux ibtool can't compile a launch storyboard, the app gets a plain
   `UILaunchScreen`, and an icon set without images gives no icon, as in Xcode.
-- The ibtool patch for React Native's launch storyboard hasn't been compared
-  with Apple's ibtool output. The upstream golden self-test (`checks.ibtool-golden`)
-  still passes.
+- Old copies in `~/.local/bin` (xtool, ipsw) or `~/pymobile3-venv`, from an
+  earlier run of upstream's `install-toolchain.sh`, win over the Nix packages.
 
 ### Debug builds and the dev server
 
