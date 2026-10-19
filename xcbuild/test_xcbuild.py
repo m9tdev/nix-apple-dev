@@ -249,6 +249,17 @@ class Steps(unittest.TestCase):
         s.record(self.out, ("cc",), [self.src], 0, [self.out])  # the input is newer than the step
         self.assertFalse(s.fresh(self.out, ("cc",), [self.out]))
 
+    def test_input_changed_just_before_step(self):
+        # written within the timestamp margin before the step's start: it may have been
+        # written after the start with an earlier mtime, so it is not trusted
+        s = self.steps()
+        s.record(self.out, ("cc",), [self.src], time.time_ns() + 10**6, [self.out])
+        self.assertFalse(s.fresh(self.out, ("cc",), [self.out]))
+        # unless this build wrote it (another step's output): nothing else writes those
+        s = x.Steps(self.db, "tools", ours={self.src})
+        s.record(self.out, ("cc",), [self.src], time.time_ns() + 10**6, [self.out])
+        self.assertTrue(s.fresh(self.out, ("cc",), [self.out]))
+
     def test_missing_input_and_directory(self):
         s = self.steps()
         s.record(self.out, ("cc",), [os.path.join(self.d, "gone.h"), self.d], time_ns_later(), [self.out])
@@ -312,6 +323,16 @@ class Steps(unittest.TestCase):
         s.record(self.out, ("cc",), [self.src, h], time_ns_later(), [self.out], skip=(sdk + "/",))
         self.assertEqual(list(s.db[self.out]["in"]), [self.src])
 
+    def test_prune_keeps_outputs_of_this_build(self):
+        # a step renamed (its key changed, not its output): the old record goes, the file stays
+        s = self.steps()
+        s.record("old-name", ("sh",), [], time_ns_later(), [self.out])
+        s.save()
+        s = self.steps()
+        s.record("new-name", ("sh", "-x"), [], time_ns_later(), [self.out])
+        self.assertEqual(s.prune(), [])
+        self.assertEqual(list(s.db), ["new-name"])
+
     def test_prune(self):
         self.recorded()
         s = self.steps()
@@ -341,7 +362,8 @@ class Steps(unittest.TestCase):
 
 
 def time_ns_later():
-    return time.time_ns() + 10**9
+    """A step's start well after the files written now (past the timestamp margin)."""
+    return x.RACY_NS + time.time_ns() + 10**9
 
 
 class DepFiles(unittest.TestCase):
@@ -421,6 +443,7 @@ def make_build(root, settings, sources, phases=(), clean=False):
          "phases": list(phases) + [{"isa": "PBXSourcesBuildPhase",
                                     "files": [{"path": os.path.join(src, f)} for f in sources]}]}
     b.ws = src
+    b.ours = set()
     b.projects, b.targets, b.all_headers = [proj], {"Lib": t}, {}
     return b
 
@@ -451,7 +474,11 @@ class Incremental(unittest.TestCase):
         self.tmp.cleanup()
 
     def put(self, rel, text):
-        write(os.path.join(self.src, rel), text)
+        """An edit made a while before the next build (one just before it may be redone)."""
+        p = os.path.join(self.src, rel)
+        write(p, text)
+        t = time.time_ns() - 2 * x.RACY_NS
+        os.utime(p, ns=(t, t))
 
     def build(self, clean=False):
         """Builds; returns the objects that were compiled (by name)."""
@@ -467,14 +494,19 @@ class Incremental(unittest.TestCase):
     def obj(self, name):
         return self.temp(os.path.join("Objects-normal/arm64", name))
 
+    def lib(self):
+        return os.path.join(self.root, "build/Build/Products/Debug-iphoneos/libLib.a")
+
     def members(self):
-        lib = os.path.join(self.root, "build/Build/Products/Debug-iphoneos/libLib.a")
-        return subprocess.run(["llvm-ar", "t", lib], capture_output=True, text=True, check=True).stdout.split()
+        return subprocess.run(["llvm-ar", "t", self.lib()], capture_output=True, text=True, check=True).stdout.split()
 
     def test_nothing_changed(self):
         self.assertEqual(self.build(), ["a.o", "b.o"])
+        lib = x.output_sig(self.lib())
         self.assertEqual(self.build(), [])
         self.assertEqual(self.members(), ["a.o", "b.o"])
+        # the archive read objects written just before it: this build's own, so trusted
+        self.assertEqual(x.output_sig(self.lib()), lib)
 
     def test_header_edit(self):
         self.build()

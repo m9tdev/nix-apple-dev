@@ -329,12 +329,15 @@ class Steps:
     and an output that is not the file the step wrote (other mtime, size or inode) makes
     the step run again."""
 
-    def __init__(self, path, env, clean=False):
+    def __init__(self, path, env, clean=False, ours=None):
         self.path = path
         self.journal = path + ".forget"
         self.env = env        # tools, SDK and this script: a new toolchain rebuilds everything
         self.lock = threading.Lock()
         self.seen = set()     # steps of this build, to prune the others
+        # files this build wrote or found up to date as a step's output (in any target), and
+        # header maps: nothing else writes them while it runs
+        self.ours = set() if ours is None else ours
         self.db = {}
         if clean:
             for f in (path, self.journal):
@@ -391,11 +394,15 @@ class Steps:
             # trusted by mtime once it is older than this check, not hashed every build
             with self.lock:
                 rec["at"] = now
+        with self.lock:
+            self.ours.update(outputs)
         return True
 
     def record(self, key, cmd, inputs, since, outputs, cwd=None, skip=()):
         """inputs: the files the step read; since: when it started (time.time_ns()). An input
-        modified after that may not be in the output, so the step runs again next time.
+        modified after that may not be in the output, so the step runs again next time; so
+        does one modified within the timestamp margin before it (a write just after the
+        start may get an earlier mtime), unless this build wrote it.
         outputs: the files it wrote; skip: path prefixes not to record (the SDK and the
         toolchain, which the record's env identifies)."""
         ins = {}
@@ -408,16 +415,21 @@ class Steps:
             except OSError:
                 ins[p] = [0, 0, ""]
                 continue
-            d = file_digest(p) if st.st_mtime_ns < since else None
+            settled = st.st_mtime_ns < since - RACY_NS or (p in self.ours and st.st_mtime_ns < since)
+            d = file_digest(p) if settled else None
             ins[p] = [st.st_mtime_ns, st.st_size, d or ""]
         outs = {o: output_sig(o) for o in outputs}
         with self.lock:
+            self.ours.update(outputs)
             self.seen.add(key)
             self.db[key] = {"cmd": self.key(cmd, cwd), "in": ins, "out": outs, "at": time.time_ns()}
 
-    def forget(self, *keys):
-        """Steps about to run: out of the record, here and on disk, before they start."""
+    def forget(self, *keys, outputs=()):
+        """Steps about to run: out of the record, here and on disk, before they start.
+        outputs: theirs besides the keys (which name the main ones)."""
         with self.lock:
+            self.ours.update(keys)
+            self.ours.update(outputs)
             for k in keys:
                 self.seen.add(k)
                 self.db.pop(k, None)
@@ -430,10 +442,12 @@ class Steps:
             return list((self.db.get(key) or {}).get("out") or {})
 
     def prune(self):
-        """Drop the steps this build didn't have (a removed source); returns their outputs."""
+        """Drop the steps this build didn't have (a removed source); returns their outputs,
+        but not those that a step of this build has (its name changed, not its output)."""
         with self.lock:
             gone = [k for k in self.db if k not in self.seen]
-            return [o for k in gone for o in self.db.pop(k).get("out") or {}]
+            return [o for k in gone for o in self.db.pop(k).get("out") or {}
+                    if o not in self.ours and o not in self.seen]
 
     def save(self):
         os.makedirs(os.path.dirname(self.path), exist_ok=True)
@@ -469,6 +483,7 @@ class Build:
         self.ws = os.path.abspath(a.workspace_dir)
         self.config = a.configuration
         self.clean = a.clean
+        self.ours = set()  # see Steps.ours
         self.sdkroot = a.sdk
         self.devdir = a.developer_dir
         self.toolchain = os.path.join(self.devdir, "Toolchains/XcodeDefault.xctoolchain")
@@ -725,7 +740,7 @@ class Build:
             if self.steps.fresh(key, sig, outs + ([depfile] if depfile else [])):
                 log("  script: %s (up to date)" % name)
                 return
-            self.steps.forget(key)
+            self.steps.forget(key, outputs=outs + ([depfile] if depfile else []))
         log("  script: %s" % name)
         since = time.time_ns()
         shell_argv = shlex.split(shell)
@@ -760,6 +775,7 @@ class Build:
         if memo and memo[0] is t and memo[1] is s:
             return list(memo[2])
         flags = self._search_flags_uncached(t, s)
+        self.ours.update(hmap_inputs(flags))  # written above
         self._search_flags = (t, s, flags)
         return list(flags)
 
@@ -1023,7 +1039,7 @@ class Build:
             log("  swiftc: %d files (up to date)" % len(files))
             return objs
         before = self.steps.outputs(modfile)
-        self.steps.forget(modfile)
+        self.steps.forget(modfile, outputs=outs)
         log("  swiftc: %d files" % len(files))
         # whole-module mode writes one dependency file for the module, incremental mode one
         # per file (an unchanged file keeps the one from its last compile); none from an
@@ -1043,7 +1059,7 @@ class Build:
                 return objs
             inputs += found
         self.steps.record(modfile, cmd, sorted(set(inputs + hmap_inputs(cmd))), since, outs, cwd=objdir, skip=self.skip)
-        remove_objects(set(before) - set(outs), objdir)  # removed sources
+        remove_objects(set(before) - set(outs) - self.ours, objdir)  # removed sources
         return objs
 
     # -- products
@@ -1176,7 +1192,8 @@ class Build:
         self.assets, self.storyboards = [], []
         self.failed_storyboards, self.partial_plist = set(), {}
         wrap = os.path.join(bpd, s.get("WRAPPER_NAME")) if s.get("WRAPPER_NAME") else None
-        self.steps = Steps(os.path.join(s.get("TARGET_TEMP_DIR"), "xcbuild-steps.json"), self.step_env, clean=self.clean)
+        self.steps = Steps(os.path.join(s.get("TARGET_TEMP_DIR"), "xcbuild-steps.json"), self.step_env,
+                           clean=self.clean, ours=self.ours)
         try:
             self.build_phases(t, s, typ, wrap)
             # objects of removed sources: out of the record and off the disk
