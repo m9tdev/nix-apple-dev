@@ -147,12 +147,9 @@ sign-dev.sh $app app.ipa && pymobiledevice3 apps install app.ipa
   `otool`, `lipo`, `ditto`, `codesign`) have small Linux stand-ins; `plutil`
   comes with the Swift toolchain. Signing happens afterwards with `sign-dev.sh`.
 - Hermes: a pod's macOS `hermesc` is replaced by the npm `hermes-compiler`
-  Linux build, but only if both have the same version. This changes `Pods/`:
-  `hermes-engine/destroot/bin/hermesc` is renamed to `hermesc.macos`, and a
-  symlink to the Linux build takes its place.
+  Linux build of the same version.
 - If the Linux ibtool can't compile a launch storyboard, the app gets a plain
   `UILaunchScreen`, and an icon set without images gives no icon, as in Xcode.
-- The Debug configuration isn't supported yet.
 - The ibtool patch for React Native's launch storyboard hasn't been compared
   with Apple's ibtool output. The upstream golden self-test (`checks.ibtool-golden`)
   still passes.
