@@ -47,6 +47,7 @@ proj.targets.each do |t|
       p['input_lists'] = ph.input_file_list_paths || []
       p['output_lists'] = ph.output_file_list_paths || []
       p['always'] = ph.respond_to?(:always_out_of_date) ? ph.always_out_of_date : nil
+      p['dependency_file'] = ph.respond_to?(:dependency_file) ? ph.dependency_file : nil
     else
       p['files'] = ph.files.map do |bf|
         r = bf.file_ref

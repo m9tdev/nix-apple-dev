@@ -292,9 +292,9 @@ def read_depfile(path):
             out.append(re.sub(r"\\(.)", r"\1", tok.replace("$$", "$")))
     return out
 
-def read_dependency_info(path):
+def read_dependency_info(path, cwd):
     """Input files in an ld64 -dependency_info file (records: opcode byte, NUL-terminated
-    path; 0x10 = input file), or None."""
+    path; 0x10 = input file), or None. cwd: the linker's, for relative paths."""
     try:
         with open(path, "rb") as f:
             data = f.read()
@@ -302,10 +302,17 @@ def read_dependency_info(path):
         return None
     out = []
     for rec in data.split(b"\0"):
-        # lld also lists each archive member it loaded by its bare name; the archive itself
-        # is listed by its path, so only absolute paths are files
-        if rec[:1] == b"\x10" and rec[1:2] == b"/":
-            out.append(os.fsdecode(rec[1:]))
+        if rec[:1] != b"\x10":
+            continue
+        p = os.fsdecode(rec[1:])
+        if not os.path.isabs(p):
+            # lld also lists each archive member it loaded by its bare name (b.o of libB.a),
+            # with the archive itself listed by its path: a relative name that is no file
+            # here is such a member, not an input to track
+            p = os.path.join(cwd, p)
+            if not os.path.isfile(p):
+                continue
+        out.append(p)
     return out
 
 def output_sig(p):
@@ -497,11 +504,13 @@ class Build:
         cache = os.path.join(self.derived, "projects", "%s.%s.json" % (os.path.basename(proj), self.config))
         os.makedirs(os.path.dirname(cache), exist_ok=True)
         pbx = os.path.join(proj, "project.pbxproj")
-        if not os.path.exists(cache) or os.path.getmtime(cache) < os.path.getmtime(pbx):
+        # read again when the project or the reader changed
+        dumper = os.path.join(HERE, "dump-project.rb")
+        if not os.path.exists(cache) or os.path.getmtime(cache) < max(os.path.getmtime(pbx), os.path.getmtime(dumper)):
             tmp = cache + ".tmp"
             try:
                 with open(tmp, "w") as f:
-                    r = subprocess.run([RUBY, os.path.join(HERE, "dump-project.rb"), proj, self.config], stdout=f)
+                    r = subprocess.run([RUBY, dumper, proj, self.config], stdout=f)
                 if r.returncode != 0:
                     raise SystemExit("xcbuild: reading %s failed (dump-project.rb exited %d)" % (proj, r.returncode))
                 os.replace(tmp, cache)
@@ -699,23 +708,32 @@ class Build:
             f.write("#!%s\n%s\n" % (shell, ph.get("script") or ""))
         # Like Xcode, a script that declares its inputs and outputs (files or file lists)
         # runs only when an input changed or an output is missing; one without either, or
-        # marked "based on dependency analysis" off, runs every time.
+        # marked "based on dependency analysis" off, runs every time. A dependency file it
+        # declares (Makefile style, written by the script) adds the inputs listed there.
         ins, outs = self.script_files(s, ph, "inputs", "input_lists"), self.script_files(s, ph, "outputs", "output_lists")
+        cwd = s.get("SRCROOT")
+        depfile = s.expand(ph.get("dependency_file") or "")
+        depfile = os.path.join(cwd, depfile) if depfile else None
         key = None
-        if ins and outs and not ph.get("always"):
+        if ins and outs and not xcode_bool(ph.get("always")):
             key = "script:" + tmp
-            sig = [shell, ph.get("script") or ""] + ins + ["->"] + outs \
+            sig = [shell, ph.get("script") or ""] + ins + ["->"] + outs + ["depfile", depfile or ""] \
                 + ["%s=%s" % (k, s.get(k)) for k in sorted(s.vals)]
-            if self.steps.fresh(key, sig, outs):
+            if self.steps.fresh(key, sig, outs + ([depfile] if depfile else [])):
                 log("  script: %s (up to date)" % name)
                 return
             self.steps.forget(key)
         log("  script: %s" % name)
         since = time.time_ns()
         shell_argv = shlex.split(shell)
-        self.run(shell_argv + [tmp], cwd=s.get("SRCROOT"), env=env)
+        self.run(shell_argv + [tmp], cwd=cwd, env=env)
         if key:
-            self.steps.record(key, sig, ins, since, outs)
+            found = read_depfile(depfile) if depfile else []
+            if found is None:
+                log("  warning: %s wrote no dependency file %s; it runs again next build" % (name, depfile))
+                return
+            found = [os.path.join(cwd, p) for p in found]
+            self.steps.record(key, sig, ins + found, since, outs + ([depfile] if depfile else []))
 
     def script_files(self, s, ph, kind, lists):
         """A script phase's declared files: the paths and the paths in its .xcfilelist files
@@ -1271,16 +1289,21 @@ class Build:
         # the files the linker read (-l libraries found on the search paths too), as Xcode does
         info = os.path.join(s.get("TARGET_TEMP_DIR"), s.get("EXECUTABLE_NAME") + "_dependency_info.dat")
         cmd += ["-Xlinker", "-dependency_info", "-Xlinker", info, "-o", exe]
-        if self.steps.fresh(exe, cmd, [exe]):
+        cwd = os.getcwd()  # relative paths in OTHER_LDFLAGS and in the dependency info
+        if self.steps.fresh(exe, cmd, [exe], cwd=cwd):
             log("  link", os.path.basename(exe), "(up to date)")
             return
         self.steps.forget(exe)
         log("  link", os.path.basename(exe))
         since = time.time_ns()
-        self.run(cmd)
-        ins = read_dependency_info(info)
+        self.run(cmd, cwd=cwd)
+        ins = read_dependency_info(info, cwd)
         if ins:
-            self.steps.record(exe, cmd, ins + objs, since, [exe], skip=self.skip)
+            self.steps.record(exe, cmd, ins + objs, since, [exe], cwd=cwd, skip=self.skip)
+
+def xcode_bool(v):
+    """A project's boolean attribute: xcodeproj gives strings ("0", "1")."""
+    return str(v or "").strip().upper() in ("1", "YES", "TRUE")
 
 def expand_recursive(p):
     if p.endswith("/**"):

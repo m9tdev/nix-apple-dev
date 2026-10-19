@@ -355,9 +355,18 @@ class DepFiles(unittest.TestCase):
     def test_dependency_info(self):
         with tempfile.TemporaryDirectory() as d:
             p = os.path.join(d, "dep.dat")
-            # lld lists archive members (b.o of libB.a) by bare name
-            write(p, b"\x00lld\x00\x10/o/a.o\x00\x11/missing.a\x00\x10/l/libB.a\x00\x10b.o\x00\x40/app/App\x00")
-            self.assertEqual(x.read_dependency_info(p), ["/o/a.o", "/l/libB.a"])
+            os.mkdir(os.path.join(d, "lib"))
+            write(os.path.join(d, "lib", "libC.a"), "!<arch>\n")
+            # lld lists archive members (b.o of libB.a) by bare name, and inputs given by a
+            # relative path as given
+            write(p, b"\x00lld\x00\x10/o/a.o\x00\x11/missing.a\x00\x10/l/libB.a\x00\x10b.o\x00"
+                     b"\x10lib/libC.a\x00\x40/app/App\x00")
+            self.assertEqual(x.read_dependency_info(p, d), ["/o/a.o", "/l/libB.a", os.path.join(d, "lib/libC.a")])
+            self.assertIsNone(x.read_dependency_info(os.path.join(d, "none.dat"), d))
+
+    def test_xcode_bool(self):
+        for v, want in (("0", False), ("1", True), (None, False), ("", False), (True, True), ("YES", True)):
+            self.assertEqual(x.xcode_bool(v), want, v)
 
     def test_hmap_inputs(self):
         cmd = ["clang", "-iquote", "/t/gen.hmap", "-I/t/own.hmap", "-Xcc", "-I/t/all.hmap", "-I/inc"]
