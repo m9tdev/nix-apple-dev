@@ -273,9 +273,9 @@ class Steps(unittest.TestCase):
 
     def test_mtime_margin(self):
         lag = x.CLOCK_LAG_NS
-        self.assertEqual(x.mtime_margin(1760000000123456789), lag + 2)
-        self.assertEqual(x.mtime_margin(1760000000120000000), lag + 2 * 10**7)  # exFAT: 10 ms
-        self.assertEqual(x.mtime_margin(1760000000000000000), lag + 2 * 10**9)  # whole seconds
+        self.assertEqual(x.mtime_margin(1000000000123456789), lag + 2)
+        self.assertEqual(x.mtime_margin(1000000000120000000), lag + 2 * 10**7)  # exFAT: 10 ms
+        self.assertEqual(x.mtime_margin(1000000000000000000), lag + 2 * 10**9)  # whole seconds
         self.assertEqual(x.mtime_margin(0), lag + 2 * 10**9)
 
     def test_declared_output_never_written(self):
