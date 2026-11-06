@@ -538,11 +538,8 @@ class Build:
                 self.all_headers.setdefault(os.path.basename(f), f)
 
     def load(self, proj):
-        # The project as dump-project.rb reads it, cached per reader: the file name has a digest
-        # of the reader and the Ruby running it (installed files all have the same mtime, so a
-        # new reader is told by its content), and of project.pbxproj's mtime, size and inode:
-        # any difference, not only a newer mtime, reads it again (a restored or copied file
-        # can be older than the cache).
+        # The project as dump-project.rb reads it, cached under a digest of the reader, the Ruby and
+        # project.pbxproj's mtime, size and inode: any difference re-reads (restored files can be older).
         dumper = os.path.join(HERE, "dump-project.rb")
         pbx = os.path.join(proj, "project.pbxproj")
         st = os.stat(pbx)
