@@ -540,20 +540,24 @@ class Build:
     def load(self, proj):
         # The project as dump-project.rb reads it, cached per reader: the file name has a digest
         # of the reader and the Ruby running it (installed files all have the same mtime, so a
-        # new reader is told by its content). Read again when project.pbxproj is newer.
+        # new reader is told by its content), and of project.pbxproj's mtime, size and inode:
+        # any difference, not only a newer mtime, reads it again (a restored or copied file
+        # can be older than the cache).
         dumper = os.path.join(HERE, "dump-project.rb")
+        pbx = os.path.join(proj, "project.pbxproj")
+        st = os.stat(pbx)
         with open(dumper, "rb") as f:
-            reader = hashlib.sha256(os.fsencode(os.path.realpath(shutil.which(RUBY) or RUBY)) + b"\0"
-                                    + f.read()).hexdigest()[:12]
+            key = hashlib.sha256(os.fsencode(os.path.realpath(shutil.which(RUBY) or RUBY)) + b"\0"
+                              + f.read() + b"\0"
+                              + b"%d %d %d" % (st.st_mtime_ns, st.st_size, st.st_ino)).hexdigest()[:12]
         cdir = os.path.join(self.derived, "projects")
         prefix = "%s.%s" % (os.path.basename(proj), self.config)
-        cache = os.path.join(cdir, "%s.%s.json" % (prefix, reader))
+        cache = os.path.join(cdir, "%s.%s.json" % (prefix, key))
         os.makedirs(cdir, exist_ok=True)
-        for old in os.listdir(cdir):  # caches made by other readers
+        for old in os.listdir(cdir):  # caches of other readers or of an older project.pbxproj
             if re.fullmatch(re.escape(prefix) + r"(\.[0-9a-f]{12})?\.json", old) and old != os.path.basename(cache):
                 os.remove(os.path.join(cdir, old))
-        pbx = os.path.join(proj, "project.pbxproj")
-        if not os.path.exists(cache) or os.path.getmtime(cache) < os.path.getmtime(pbx):
+        if not os.path.exists(cache):
             tmp = cache + ".tmp"
             try:
                 with open(tmp, "w") as f:
@@ -714,25 +718,46 @@ class Build:
         """Pods ship some host tools as macOS binaries. Swap in the Linux build of the
         same version, so script phases that call them by path work:
           - hermes-engine/destroot/bin/hermesc <- node_modules/hermes-compiler linux64-bin
-            (only if both have the same version, so bytecode matches the Hermes VM)."""
+            (only if both have the same version, so bytecode matches the Hermes VM).
+        The macOS binary is kept as hermesc.macos. Checked on every build: npm can upgrade
+        hermes-compiler under the link, and a moved project or a stop mid-swap leaves the
+        link dangling or missing."""
         pods = s.get("PODS_ROOT") or os.path.join(self.ws, "Pods")
         hc = os.path.join(pods, "hermes-engine/destroot/bin/hermesc")
-        if not os.path.exists(hc) or os.path.islink(hc):
+        macos = hc + ".macos"
+        swapped = os.path.islink(hc) or not os.path.lexists(hc)
+        orig = macos if swapped else hc
+        if not os.path.isfile(orig):
             return
-        if open(hc, "rb").read(4) not in (b"\xca\xfe\xba\xbe", b"\xcf\xfa\xed\xfe"):
-            return
-        m = re.search(r"hermes-engine \(([^)]+)\)", open(os.path.join(pods, "Manifest.lock")).read())
+        with open(orig, "rb") as f:
+            if f.read(4) not in (b"\xca\xfe\xba\xbe", b"\xcf\xfa\xed\xfe"):
+                return
+        with open(os.path.join(pods, "Manifest.lock")) as f:
+            m = re.search(r"hermes-engine \(([^)]+)\)", f.read())
         npm = os.path.join(self.ws, "..", "node_modules/hermes-compiler")
-        lin = os.path.join(npm, "hermesc/linux64-bin/hermesc")
-        ver = json.load(open(os.path.join(npm, "package.json")))["version"] if os.path.exists(lin) else None
+        lin = os.path.abspath(os.path.join(npm, "hermesc/linux64-bin/hermesc"))
+        ver = None
+        if os.path.exists(lin):
+            with open(os.path.join(npm, "package.json")) as f:
+                ver = json.load(f)["version"]
         if not m or ver != m.group(1):
             raise SystemExit("hermesc: pod hermes-engine %s, npm hermes-compiler %s: need the same version for Linux"
                              % (m and m.group(1), ver))
-        os.rename(hc, hc + ".macos")
-        os.symlink(os.path.abspath(lin), hc)
+        if swapped and os.path.lexists(hc) and os.readlink(hc) == lin:
+            return
+        if not swapped:
+            os.rename(hc, macos)
+        # a stop before the replace leaves only hermesc.macos: the next build swaps again
+        tmp = hc + ".tmp"
+        if os.path.lexists(tmp):
+            os.remove(tmp)
+        os.symlink(lin, tmp)
+        os.replace(tmp, hc)
         log("  hermesc: using the Linux build of hermes-compiler %s" % ver)
 
-    def run_script(self, t, s, ph):
+    def run_script(self, t, s, ph, index):
+        """index: the phase's place in the target, which tells apart phases with the same name
+        (or none), each with its own script file and record."""
         name = ph.get("name") or "Run Script"
         self.linux_host_tools(s)
         env = self.script_env(t, s)
@@ -748,7 +773,7 @@ class Build:
                 env["SCRIPT_%s_FILE_LIST_%d" % (key, i)] = f
         for f in [s.expand(x) for x in ph.get("outputs") or []]:
             os.makedirs(os.path.dirname(f), exist_ok=True)
-        tmp = os.path.join(s.get("TARGET_TEMP_DIR"), "Script-%s.sh" % hashlib.sha1(name.encode()).hexdigest()[:10])
+        tmp = os.path.join(s.get("TARGET_TEMP_DIR"), "Script-%s.sh" % hashlib.sha1(("%d %s" % (index, name)).encode()).hexdigest()[:10])
         os.makedirs(os.path.dirname(tmp), exist_ok=True)
         shell = ph.get("shell") or "/bin/sh"
         with open(tmp, "w") as f:
@@ -1235,10 +1260,10 @@ class Build:
 
     def build_phases(self, t, s, typ, wrap):
         objs = []
-        for ph in t["phases"]:
+        for i, ph in enumerate(t["phases"]):
             isa = ph["isa"]
             if isa == "PBXShellScriptBuildPhase":
-                self.run_script(t, s, ph)
+                self.run_script(t, s, ph, i)
             elif isa == "PBXSourcesBuildPhase":
                 objs = self.compile_target(t, s)
                 if typ.endswith("library.static"):
