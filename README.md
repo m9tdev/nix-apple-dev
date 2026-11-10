@@ -152,9 +152,10 @@ sign-dev.sh $app app.ipa && pymobiledevice3 apps install app.ipa
   during a build lets another build start beside it.
   `rm -rf ios/build/xcbuild` (with no build running) also gives a clean build.
 - The projects are read with `dump-project.rb` and cached in the build
-  directory. A project is read again when its `project.pbxproj` is newer than
-  the cache, when the content of `dump-project.rb` changed, or when the Ruby
-  that runs it resolves to another path. `--clean` keeps that cache;
+  directory. A project is read again when its `project.pbxproj` has another
+  mtime, size or inode than when it was read (older counts too: a file restored
+  from a backup), when the content of `dump-project.rb` changed, or when the
+  Ruby that runs it resolves to another path. `--clean` keeps that cache;
   `rm -rf ios/build/xcbuild` drops it.
 - What an incremental build doesn't notice: changes to the tools other than
   `xcbuild.py` and `dump-project.rb` (`xcode_version.py`, the stand-ins in
@@ -179,8 +180,10 @@ sign-dev.sh $app app.ipa && pymobiledevice3 apps install app.ipa
   `otool`, `lipo`, `ditto`, `codesign`, `ipconfig`) have small Linux stand-ins;
   `plutil` comes with the Swift toolchain. Signing happens afterwards with
   `sign-dev.sh`.
-- Hermes: a pod's macOS `hermesc` is replaced by the npm `hermes-compiler`
-  Linux build of the same version.
+- Hermes: a pod's macOS `hermesc` is replaced by a link to the npm
+  `hermes-compiler` Linux build of the same version (the macOS binary is kept
+  as `hermesc.macos`). Every build checks the versions again and redoes the
+  link if it is missing or points elsewhere (a moved project).
 - If the Linux ibtool can't compile a launch storyboard, the app gets a plain
   `UILaunchScreen`, and an icon set without images gives no icon, as in Xcode.
 - Old copies in `~/.local/bin` (xtool, ipsw) or `~/pymobile3-venv`, from an

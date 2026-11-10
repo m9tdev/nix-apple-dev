@@ -186,6 +186,17 @@ class ProjectCache(unittest.TestCase):
         os.utime(os.path.join(self.proj, "project.pbxproj"), ns=(t + 10**9, t + 10**9))
         self.assertEqual(self.load(), ("v2", 3))
 
+    def test_replaced_with_older_mtime(self):
+        # a project.pbxproj restored from a backup or copied with its timestamp (tar, rsync -a)
+        self.assertEqual(self.load(), ("v1", 1))
+        pbx = os.path.join(self.proj, "project.pbxproj")
+        write(pbx, "// another project\n")
+        old = time.time_ns() - 3600 * 10**9
+        os.utime(pbx, ns=(old, old))
+        self.assertEqual(self.load(), ("v1", 2))
+        self.assertEqual(self.load(), ("v1", 2))
+        self.assertEqual(len(os.listdir(os.path.join(self.d, "build", "projects"))), 1)
+
 
 class Supported(unittest.TestCase):
     def build(self, targets):
@@ -499,6 +510,82 @@ class Signals(unittest.TestCase):
                 signal.signal(sig, h)
 
 
+class Hermesc(unittest.TestCase):
+    """A pod's macOS hermesc is swapped for the npm Linux build of the same version, and the
+    swap is checked again on every build."""
+
+    MACHO = b"\xcf\xfa\xed\xfe" + b"\0" * 60
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.project(os.path.join(self.tmp.name, "app"))
+        os.makedirs(os.path.dirname(self.hc))
+        write(self.hc, self.MACHO)
+        os.makedirs(os.path.dirname(self.lin))
+        write(self.lin, "#!/bin/sh\n")
+        write(os.path.join(self.pods, "Manifest.lock"), "  - hermes-engine (0.80.0):\n")
+        self.version("0.80.0")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def project(self, root):
+        self.ws = os.path.join(root, "ios")
+        self.pods = os.path.join(self.ws, "Pods")
+        self.hc = os.path.join(self.pods, "hermes-engine/destroot/bin/hermesc")
+        self.npm = os.path.join(root, "node_modules/hermes-compiler")
+        self.lin = os.path.join(self.npm, "hermesc/linux64-bin/hermesc")
+
+    def version(self, v):
+        write(os.path.join(self.npm, "package.json"), json.dumps({"version": v}))
+
+    def swap(self):
+        b = x.Build.__new__(x.Build)
+        b.ws = self.ws
+        s = x.Settings({})
+        s.layer_dict({"PODS_ROOT": self.pods})
+        with mock.patch.object(x, "log"):
+            b.linux_host_tools(s)
+
+    def assertSwapped(self):
+        self.assertEqual(os.readlink(self.hc), self.lin)
+        self.assertTrue(os.path.exists(self.hc))
+        self.assertEqual(read(self.hc + ".macos"), self.MACHO)
+
+    def test_swap(self):
+        self.swap()
+        self.assertSwapped()
+        self.swap()
+        self.assertSwapped()
+
+    def test_interrupted_swap(self):
+        # stopped (Ctrl-C, or a signal raising SystemExit) while swapping: the next build swaps
+        with mock.patch.object(x.os, "symlink", side_effect=KeyboardInterrupt):
+            with self.assertRaises(KeyboardInterrupt):
+                self.swap()
+        self.swap()
+        self.assertSwapped()
+
+    def test_moved_project(self):
+        # the link is absolute: after the project moves it dangles until the next build
+        self.swap()
+        os.rename(os.path.join(self.tmp.name, "app"), os.path.join(self.tmp.name, "moved"))
+        self.project(os.path.join(self.tmp.name, "moved"))
+        self.assertFalse(os.path.exists(self.hc))
+        self.swap()
+        self.assertSwapped()
+
+    def test_version_drift(self):
+        # npm hermes-compiler upgraded without a new hermes-engine pod
+        self.swap()
+        self.version("0.81.0")
+        with self.assertRaises(SystemExit):
+            self.swap()
+        self.version("0.80.0")
+        self.swap()
+        self.assertSwapped()
+
+
 def make_build(root, settings, sources, phases=(), clean=False):
     """A Build of one static library target, Lib, in root (src/, build/), as main() makes
     one from a workspace, without the project reader or the iOS SDK."""
@@ -527,6 +614,28 @@ def make_build(root, settings, sources, phases=(), clean=False):
     b.ours = set()
     b.projects, b.targets, b.all_headers = [proj], {"Lib": t}, {}
     return b
+
+
+class ScriptPhases(unittest.TestCase):
+    """Script phases through the record, without a compiler: each phase has its own record."""
+
+    def test_same_name(self):
+        # unnamed phases (or phases with the same name) are up to date on their own
+        with tempfile.TemporaryDirectory() as root:
+            src = os.path.join(root, "src")
+            os.makedirs(src)
+            write(os.path.join(src, "in.txt"), "x")
+            t = time.time_ns() - 5 * 10**9
+            os.utime(os.path.join(src, "in.txt"), ns=(t, t))
+            phases = [{"isa": "PBXShellScriptBuildPhase", "name": None, "shell": "/bin/sh",
+                       "inputs": ["$(SRCROOT)/in.txt"], "outputs": ["$(DERIVED_FILE_DIR)/out%d.txt" % n],
+                       "script": 'echo %d >> runs\necho %d > "$DERIVED_FILE_DIR/out%d.txt"\n' % (n, n, n)}
+                      for n in (1, 2)]
+            for _ in range(3):
+                b = make_build(root, {}, [], phases)
+                with mock.patch.object(x, "log"):
+                    b.build_target("Lib")
+            self.assertEqual(read(os.path.join(src, "runs")).split(), [b"1", b"2"])
 
 
 @unittest.skipUnless(shutil.which("clang") and shutil.which("llvm-ar"), "needs clang and llvm-ar on PATH")
