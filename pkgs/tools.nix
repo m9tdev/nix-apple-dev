@@ -77,14 +77,16 @@
     packagePath = "tools/darwin-tools";
     lock = ./locks/darwin-tools.json;
     product = "actool";
-    # AssetKit with the macOS Icon Composer layout (m9tdev/AssetKit#1, on top
-    # of an older omarchy/mac-icon pin; upstream's 09875cc doesn't have it):
-    # without it macOS shows the generic icon for an .icon app icon. Back to
-    # upstream's pin once it lands there.
+    # AssetKit from m9tdev/AssetKit: upstream's omarchy/mac-icon (macOS Icon
+    # Composer layout, automatic-gradient fills, exact bytes-per-row so 29pt
+    # iOS app icons don't render sheared) merged with upstream main. The
+    # 09875cc that omarchy-apple-dev pins lacks the macOS layout: macOS shows
+    # the generic icon for an .icon app icon. Back to upstream's pin once
+    # omarchy-apple-dev moves to one that has it.
     postPatch = ''
       substituteInPlace tools/darwin-tools/Package.swift --replace-fail \
         '.package(url: "https://github.com/joshuaswarren/AssetKit", revision: "09875ccce71e15244aa4910546e1f6afb6ef71d9")' \
-        '.package(url: "https://github.com/m9tdev/AssetKit", revision: "4f515f85373985ce3f5dfa5d8fe72e501b9201a1")'
+        '.package(url: "https://github.com/m9tdev/AssetKit", revision: "b8971f0377986674b9b9623d2742b123a4421c32")'
     '';
     # AssetKit runs these through PATH: rsvg-convert (SVG, Icon Composer
     # layers), pdfinfo/pdftocairo (PDF), heif-convert (HEIC; libheif 1.16
