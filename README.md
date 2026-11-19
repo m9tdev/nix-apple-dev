@@ -240,9 +240,13 @@ npx one dev --host 0.0.0.0 --port 8081      # or: npx expo start / npx react-nat
   swift.org build. The tools are built with nixpkgs' Swift 6.2.4.
 - Update a SwiftPM lock: resolve the package inside `apple-dev`, then run
   `scripts/swiftpm-lock.py .build/workspace-state.json > pkgs/locks/NAME.json`.
-- `actool` builds against [m9tdev/AssetKit](https://github.com/m9tdev/AssetKit/pull/1)
-  until upstream has its fix: macOS showed the generic app icon for an Icon
-  Composer `.icon` (it was compiled in the iOS catalog layout).
+- `actool` builds against [m9tdev/AssetKit](https://github.com/m9tdev/AssetKit) at
+  b8971f0, upstream's `omarchy/mac-icon` merged with upstream `main`. It has the
+  macOS Icon Composer layout (without it macOS shows the generic app icon for an
+  `.icon`), the exact bitmap bytes-per-row (upstream #4: 29pt iOS app icons no
+  longer render sheared) and Icon Composer `automatic-gradient` fills (upstream
+  #6). The `09875cc` that omarchy-apple-dev pins lacks the macOS layout; back to
+  upstream's pin once it moves to one that has it.
 - x86_64-linux only for now.
 - Apple's Xcode licence allows its use only on Apple-branded computers.
   You decide if that matters for your use.
