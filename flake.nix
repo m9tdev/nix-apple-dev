@@ -71,8 +71,7 @@
           apple-dev-usbmuxd = p.usbmuxd;
           apple-dev-ipsw = p.ipsw;
         }
-        // nixpkgs.lib.optionalAttrs (p ? simslim) {
-          apple-dev-simslim = p.simslim;
+        // nixpkgs.lib.optionalAttrs (p ? sim-lease) {
           apple-dev-sim-lease = p.sim-lease;
         };
 
@@ -84,7 +83,7 @@
             sim-lease = pkgs.callPackage ./pkgs/sim-lease.nix { inherit simslim; };
           in
           {
-            inherit simslim sim-lease;
+            inherit sim-lease;
             default = sim-lease;
           }
         else
@@ -162,7 +161,6 @@
           {
             default = mkApp "${p.sim-lease}/bin/sim-lease" "Lease a slim iOS simulator and run a command";
             sim-lease = mkApp "${p.sim-lease}/bin/sim-lease" "Lease a slim iOS simulator and run a command";
-            simslim = mkApp "${p.simslim}/bin/simslim" "Turn off unneeded simulator background services";
           }
         else
           {
@@ -199,7 +197,7 @@
         in
         if pkgs.stdenv.hostPlatform.isDarwin then
           {
-            inherit (p) simslim sim-lease;
+            inherit (p) sim-lease;
             inherit formatting;
             sim-lease-runs = pkgs.runCommand "sim-lease-runs" { } ''
               ${p.sim-lease}/bin/sim-lease --help | grep -q 'SIM_UDID'

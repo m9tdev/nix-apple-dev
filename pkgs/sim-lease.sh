@@ -14,19 +14,33 @@ CURRENT_NAME=
 CURRENT_STARTED=
 CAPACITY_ANNOUNCED=0
 CAPACITY_WAITING=0
+CURRENT_CLEANUP=slim
+
+# Known non-pool devices. This list is additive: an environment variable can
+# protect more UDIDs, but cannot remove a built-in protection.
+PROTECTED_UDIDS=(
+  "EDD04C40-B5A6-4135-A2BB-19444D4E00B4" # GBO Wallet VM-test
+)
+PROTECTED_EXTRA=${SIM_LEASE_PROTECTED_UDIDS:-}
+if [[ -n $PROTECTED_EXTRA ]]; then
+  read -r -a EXTRA_PROTECTED_UDIDS <<<"${PROTECTED_EXTRA//,/ }"
+  PROTECTED_UDIDS+=("${EXTRA_PROTECTED_UDIDS[@]}")
+fi
 
 usage() {
   cat <<'EOF'
 Usage:
-  sim-lease init [--device-type TYPE] [--runtime RUNTIME] [--pool-size N]
-  sim-lease run [--device-type TYPE] [--runtime RUNTIME] [--max-booted N] -- COMMAND [ARG ...]
+  sim-lease init [--device-type TYPE] [--runtime RUNTIME] [--pool-size N] [--max-booted N]
+  sim-lease run [--device-type TYPE] [--runtime RUNTIME] -- COMMAND [ARG ...]
   sim-lease status [--device-type TYPE] [--runtime RUNTIME]
+  sim-lease undo POOL_UDID
   sim-lease --help
 
 Commands:
   init     Create missing fixed pool sims, run simslim on each, then shut them down.
   run      Queue for a boot slot, lease a pool sim, and run COMMAND with SIM_UDID.
   status   Show pool devices, lease liveness, booted devices, and orphans.
+  undo     Restore one unprotected pool UDID to stock, verify, and shut it down.
 
 Pool sims are named ${SIM_LEASE_PREFIX:-pool-}iphone-1..N. run never creates,
 erases, or deletes a simulator. Cleanup uninstalls user apps, resets the
@@ -41,6 +55,21 @@ log() {
 die() {
   log "error: $*"
   exit 1
+}
+
+is_protected_udid() {
+  local candidate=${1^^} protected
+  for protected in "${PROTECTED_UDIDS[@]}"; do
+    [[ $candidate == "${protected^^}" ]] && return 0
+  done
+  return 1
+}
+
+assert_unprotected_udid() {
+  local udid=$1
+  if is_protected_udid "$udid"; then
+    die "$udid is protected (known non-pool); refusing every simulator operation"
+  fi
 }
 
 validate_settings() {
@@ -114,7 +143,8 @@ is_pool_member_name() {
   local name=$1 index
   [[ $name == "${PREFIX}iphone-"* ]] || return 1
   index=${name#"${PREFIX}iphone-"}
-  [[ $index =~ ^[1-9][0-9]*$ ]]
+  [[ $index =~ ^[1-9][0-9]*$ ]] || return 1
+  ((index <= POOL_SIZE))
 }
 
 lease_file() {
@@ -181,9 +211,10 @@ remove_user_apps() {
 
 clean_contents() {
   local udid=$1 rc=0
+  assert_unprotected_udid "$udid"
   remove_user_apps "$udid" || rc=1
   xcrun simctl keychain "$udid" reset || rc=1
-  if ! simslim verify "$udid"; then
+  if ! "$SIMSLIM" verify "$udid"; then
     log "warning: simslim verification failed for $udid; run init again before reuse"
     rc=1
   fi
@@ -193,6 +224,7 @@ clean_contents() {
 # The caller must hold the device lease/lock and establish that this is a pool UDID.
 cleanup_device() {
   local udid=$1 rc=0
+  assert_unprotected_udid "$udid"
   log "cleaning pool sim $udid"
   clean_contents "$udid" || rc=1
   xcrun simctl shutdown "$udid" || rc=1
@@ -204,7 +236,13 @@ release_current() {
   trap - EXIT INT TERM HUP
   set +e
   if [[ -n $CURRENT_UDID ]]; then
-    cleanup_device "$CURRENT_UDID" || cleanup_rc=$?
+    if [[ $CURRENT_CLEANUP == stock ]]; then
+      log "shutting down stock pool sim $CURRENT_UDID"
+      assert_unprotected_udid "$CURRENT_UDID"
+      xcrun simctl shutdown "$CURRENT_UDID" || cleanup_rc=$?
+    else
+      cleanup_device "$CURRENT_UDID" || cleanup_rc=$?
+    fi
     rm -f "$(lease_file "$CURRENT_UDID")"
     flock -u 8
     exec 8>&-
@@ -231,7 +269,9 @@ report_external_booted() {
     local name udid
     name=$(jq -r '.name' <<<"$device")
     udid=$(jq -r '.udid' <<<"$device")
-    if is_pool_member_name "$name"; then
+    if is_protected_udid "$udid"; then
+      log "protected booted sim (left untouched): $name ($udid)"
+    elif is_pool_member_name "$name"; then
       if ! lease_live "$udid"; then
         log "orphan pool sim: $name ($udid)"
       fi
@@ -247,14 +287,17 @@ clean_pool_orphans() {
   # not enough: a duplicate could be shut down and therefore absent from it.
   while IFS= read -r device; do
     name=$(jq -r '.name' <<<"$device")
+    udid=$(jq -r '.udid' <<<"$device")
+    is_protected_udid "$udid" && continue
     is_pool_member_name "$name" || continue
     find_pool_device "$name" >/dev/null || die "cannot resolve pool sim $name"
   done < <(flatten_devices <<<"$json")
 
   while IFS= read -r device; do
     name=$(jq -r '.name' <<<"$device")
-    is_pool_member_name "$name" || continue
     udid=$(jq -r '.udid' <<<"$device")
+    is_protected_udid "$udid" && continue
+    is_pool_member_name "$name" || continue
     exec 6<>"$(device_lock_file "$udid")"
     if ! flock -n 6; then
       # A running holder owns this lock. Never infer staleness from a snapshot.
@@ -272,8 +315,12 @@ booted_count() {
   jq '[.devices[]? | .[] | select(.state == "Booted")] | length' <<<"$1"
 }
 
+active_count() {
+  jq '[.devices[]? | .[] | select(.state != "Shutdown")] | length' <<<"$1"
+}
+
 wait_for_boot_slot() {
-  local json count
+  local json active_json count
   while true; do
     json=$(booted_devices_json) || die "cannot list booted simulators"
     if [[ $CAPACITY_ANNOUNCED -eq 0 ]]; then
@@ -281,8 +328,8 @@ wait_for_boot_slot() {
       CAPACITY_ANNOUNCED=1
     fi
     clean_pool_orphans "$json"
-    json=$(booted_devices_json) || die "cannot recount booted simulators"
-    count=$(booted_count "$json")
+    active_json=$(all_devices_json) || die "cannot count active simulators"
+    count=$(active_count "$active_json")
     if ((count < MAX_BOOTED)); then
       return 0
     fi
@@ -314,7 +361,7 @@ validate_pool_device() {
 }
 
 cmd_init() {
-  local i name device udid count json
+  local i name device udid count json active_json
   validate_settings
   resolve_config
   ensure_state
@@ -329,6 +376,7 @@ cmd_init() {
     if [[ -n $device ]]; then
       validate_pool_device "$device" "$name"
       udid=$(jq -r '.udid' <<<"$device")
+      assert_unprotected_udid "$udid"
       exec 6<>"$(device_lock_file "$udid")"
       if ! flock -n 6; then
         exec 6>&-
@@ -348,12 +396,13 @@ cmd_init() {
     else
       udid=$(jq -r '.udid' <<<"$device")
     fi
+    assert_unprotected_udid "$udid"
     while true; do
       json=$(booted_devices_json) || die "cannot list booted simulators"
       report_external_booted "$json"
       clean_pool_orphans "$json"
-      json=$(booted_devices_json) || die "cannot list booted simulators"
-      count=$(booted_count "$json")
+      active_json=$(all_devices_json) || die "cannot count active simulators"
+      count=$(active_count "$active_json")
       ((count < MAX_BOOTED)) && break
       log "boot limit reached ($count/$MAX_BOOTED); waiting to slim $name"
       sleep "$POLL_INTERVAL"
@@ -363,8 +412,8 @@ cmd_init() {
     reclaim_lease_locked "$udid" || true
     CURRENT_UDID=$udid
     CURRENT_NAME=$name
-    simslim on "$udid"
-    simslim verify "$udid"
+    "$SIMSLIM" on "$udid"
+    "$SIMSLIM" verify "$udid"
     cleanup_device "$udid"
     CURRENT_UDID=
     flock -u 8
@@ -394,6 +443,7 @@ cmd_run() {
       [[ -n $device ]] || die "$name is missing; run sim-lease init with the same pool settings first"
       validate_pool_device "$device" "$name"
       udid=$(jq -r '.udid' <<<"$device")
+      assert_unprotected_udid "$udid"
       exec 8<>"$(device_lock_file "$udid")"
       if ! flock -n 8; then
         exec 8>&-
@@ -420,6 +470,7 @@ cmd_run() {
   done
 
   log "booting $CURRENT_NAME ($CURRENT_UDID) with SIM_UDID"
+  assert_unprotected_udid "$CURRENT_UDID"
   device=$(find_pool_device "$CURRENT_NAME") || die "cannot reread $CURRENT_NAME"
   if [[ $(jq -r '.state' <<<"$device") != Booted ]]; then
     xcrun simctl boot "$CURRENT_UDID"
@@ -440,8 +491,45 @@ cmd_run() {
   exit "$rc"
 }
 
+cmd_undo() {
+  local requested=$1 i name device udid found_name='' status_json
+  validate_settings
+  assert_unprotected_udid "$requested"
+  resolve_config
+  ensure_state
+  for ((i = 1; i <= POOL_SIZE; i++)); do
+    name=$(pool_name "$i")
+    device=$(find_pool_device "$name")
+    [[ -n $device ]] || continue
+    udid=$(jq -r '.udid' <<<"$device")
+    if [[ ${udid^^} == "${requested^^}" ]]; then
+      found_name=$name
+      break
+    fi
+  done
+  [[ -n $found_name ]] || die "$requested is not a member of the selected pool; refusing undo"
+
+  install_cleanup_trap
+  exec 9<>"$QUEUE_LOCK"
+  flock -x 9
+  wait_for_boot_slot
+  exec 8<>"$(device_lock_file "$udid")"
+  if ! flock -n 8; then
+    exec 8>&-
+    die "$found_name has a live lease; undo cannot change it"
+  fi
+  reclaim_lease_locked "$udid" || true
+  CURRENT_UDID=$udid
+  CURRENT_NAME=$found_name
+  CURRENT_CLEANUP=stock
+  "$SIMSLIM" off "$udid"
+  status_json=$("$SIMSLIM" status "$udid" --json)
+  jq -e '.managedDisabled == 0' <<<"$status_json" >/dev/null || die "simulator is not stock after undo"
+  "$SIMSLIM" status "$udid"
+}
+
 cmd_status() {
-  local i name device udid pid state lease json booted
+  local i name device udid pid state lease json active_json booted active
   validate_settings
   resolve_config
   printf 'Pool: prefix=%s size=%s device-type=%s runtime=%s\n' "$PREFIX" "$POOL_SIZE" "$DEVICE_TYPE" "$RUNTIME"
@@ -454,6 +542,10 @@ cmd_status() {
     fi
     udid=$(jq -r '.udid' <<<"$device")
     state=$(jq -r '.state' <<<"$device")
+    if is_protected_udid "$udid"; then
+      printf '  %s %s %s PROTECTED (never touched)\n' "$name" "$udid" "$state"
+      continue
+    fi
     lease=free
     if [[ -f $(lease_file "$udid") ]]; then
       pid=$(lease_pid "$udid" 2>/dev/null || printf 'unknown')
@@ -466,13 +558,18 @@ cmd_status() {
     printf '  %s %s %s %s\n' "$name" "$udid" "$state" "$lease"
   done
 
+  active_json=$(all_devices_json) || die "cannot count active simulators"
+  active=$(active_count "$active_json")
+  printf 'Active (not Shutdown): %s (configured cap %s; all sims counted)\n' "$active" "$MAX_BOOTED"
   json=$(booted_devices_json) || die "cannot list booted simulators"
   booted=$(booted_count "$json")
-  printf 'Booted: %s (configured cap %s; all sims counted)\n' "$booted" "$MAX_BOOTED"
+  printf 'Booted: %s\n' "$booted"
   while IFS= read -r device; do
     name=$(jq -r '.name' <<<"$device")
     udid=$(jq -r '.udid' <<<"$device")
-    if is_pool_member_name "$name"; then
+    if is_protected_udid "$udid"; then
+      printf '  %s %s PROTECTED (never touched)\n' "$name" "$udid"
+    elif is_pool_member_name "$name"; then
       if lease_live "$udid"; then
         printf '  %s %s leased (not orphan)\n' "$name" "$udid"
       else
@@ -514,7 +611,11 @@ while (($#)); do
       ;;
     --max-booted)
       (($# >= 2)) || die "--max-booted needs a value"
-      MAX_BOOTED=$2
+      if [[ $COMMAND == run ]]; then
+        log "ignoring --max-booted for run; use the shared SIM_LEASE_MAX_BOOTED configuration"
+      else
+        MAX_BOOTED=$2
+      fi
       shift 2
       ;;
     --)
@@ -543,7 +644,11 @@ case $COMMAND in
     (($# == 0)) || die "status takes no positional arguments"
     cmd_status
     ;;
+  undo)
+    (($# == 1)) || die "undo takes exactly one pool UDID"
+    cmd_undo "$1"
+    ;;
   *)
-    die "unknown command: $COMMAND (expected init, run, or status)"
+    die "unknown command: $COMMAND (expected init, run, status, or undo)"
     ;;
 esac

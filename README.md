@@ -6,9 +6,11 @@ This flake packages the Linux iOS toolchain from
 [omarchy-apple-dev](https://github.com/joshuaswarren/omarchy-apple-dev)
 for Nix: Swift 6.4, xtool, the iOS SDK from `Xcode.xip`, and pymobiledevice3.
 
-For a Mac that runs iOS Simulators, the flake also packages `simslim` and
-`sim-lease` for `aarch64-darwin`: a fixed pool of slim, reusable simulators with
-host-wide leases and a boot cap. See [Shared simulator leases](docs/sim-lease.md).
+For a Mac that runs iOS Simulators, the flake also packages `sim-lease` for
+`aarch64-darwin`: a fixed pool of reusable simulators with host-wide leases and
+an active-simulator cap. Its private `simslim` dependency reduces memory use
+without exposing the upstream fleet-management CLI. See
+[Shared simulator leases](docs/sim-lease.md).
 
 ## What Nix builds, what stays in $HOME
 
@@ -251,8 +253,8 @@ npx one dev --host 0.0.0.0 --port 8081      # or: npx expo start / npx react-nat
   longer render sheared) and Icon Composer `automatic-gradient` fills (upstream
   #6). The `09875cc` that omarchy-apple-dev pins lacks the macOS layout; back to
   upstream's pin once it moves to one that has it.
-- The Linux iOS toolchain is x86_64-linux only. The independent `simslim` and
-  `sim-lease` simulator packages are aarch64-darwin only; see
+- The Linux iOS toolchain is x86_64-linux only. The independent `sim-lease`
+  simulator package (with private `simslim` support) is aarch64-darwin only; see
   [Shared simulator leases](docs/sim-lease.md).
 - Apple's Xcode licence allows its use only on Apple-branded computers.
   You decide if that matters for your use.
