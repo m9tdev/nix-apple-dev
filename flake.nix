@@ -36,7 +36,10 @@
       pyproject-build-systems,
     }:
     let
-      systems = [ "x86_64-linux" ];
+      systems = [
+        "x86_64-linux"
+        "aarch64-darwin"
+      ];
       # Unfree: only the SDK built from the user's own Xcode.xip.
       forAll =
         f:
@@ -63,68 +66,82 @@
         let
           p = self.packages.${final.stdenv.hostPlatform.system};
         in
-        {
+        nixpkgs.lib.optionalAttrs (p ? apple-dev) {
           apple-dev = p.apple-dev;
           apple-dev-usbmuxd = p.usbmuxd;
           apple-dev-ipsw = p.ipsw;
+        }
+        // nixpkgs.lib.optionalAttrs (p ? simslim) {
+          apple-dev-simslim = p.simslim;
+          apple-dev-sim-lease = p.sim-lease;
         };
 
       packages = forAll (
         pkgs:
-        let
-          swift = pkgs.callPackage ./pkgs/swift.nix { };
-          mkFHSEnv = pkgs.callPackage ./pkgs/fhs-env.nix { inherit swift; };
-          mkSwiftPM = pkgs.callPackage ./pkgs/swiftpm.nix { };
-          tools = pkgs.callPackage ./pkgs/tools.nix { inherit mkSwiftPM upstream; };
-          ipsw = pkgs.callPackage ./pkgs/ipsw.nix { };
-          python-env = pkgs.callPackage ./pkgs/python.nix {
-            inherit pyproject-nix uv2nix pyproject-build-systems;
-          };
-          upstream-patched = pkgs.callPackage ./pkgs/upstream.nix { src = upstream; };
-          ios-sdk =
-            (pkgs.callPackage ./pkgs/ios-sdk.nix {
-              inherit (tools) xtool open-apple-macros actool;
+        if pkgs.stdenv.hostPlatform.isDarwin then
+          let
+            simslim = pkgs.callPackage ./pkgs/simslim.nix { };
+            sim-lease = pkgs.callPackage ./pkgs/sim-lease.nix { inherit simslim; };
+          in
+          {
+            inherit simslim sim-lease;
+            default = sim-lease;
+          }
+        else
+          let
+            swift = pkgs.callPackage ./pkgs/swift.nix { };
+            mkFHSEnv = pkgs.callPackage ./pkgs/fhs-env.nix { inherit swift; };
+            mkSwiftPM = pkgs.callPackage ./pkgs/swiftpm.nix { };
+            tools = pkgs.callPackage ./pkgs/tools.nix { inherit mkSwiftPM upstream; };
+            ipsw = pkgs.callPackage ./pkgs/ipsw.nix { };
+            python-env = pkgs.callPackage ./pkgs/python.nix {
+              inherit pyproject-nix uv2nix pyproject-build-systems;
+            };
+            upstream-patched = pkgs.callPackage ./pkgs/upstream.nix { src = upstream; };
+            ios-sdk =
+              (pkgs.callPackage ./pkgs/ios-sdk.nix {
+                inherit (tools) xtool open-apple-macros actool;
+                upstream = upstream-patched;
+              }).overrideAttrs
+                (old: {
+                  # Needs Xcode.xip, so not in `checks`:
+                  #   nix build .#ios-sdk.tests.debug-cxx-interop
+                  passthru = (old.passthru or { }) // {
+                    tests.debug-cxx-interop = pkgs.runCommand "debug-cxx-interop" { } ''
+                      bash ${./tests/debug-cxx-interop.sh} ${swift} ${ios-sdk}/darwin.artifactbundle
+                      touch $out
+                    '';
+                  };
+                });
+            xcbuild = pkgs.callPackage ./pkgs/xcbuild.nix { };
+            apple-dev = pkgs.callPackage ./pkgs/fhs.nix {
+              inherit mkFHSEnv;
+              flakeSrc = self.outPath;
               upstream = upstream-patched;
-            }).overrideAttrs
-              (old: {
-                # Needs Xcode.xip, so not in `checks`:
-                #   nix build .#ios-sdk.tests.debug-cxx-interop
-                passthru = (old.passthru or { }) // {
-                  tests.debug-cxx-interop = pkgs.runCommand "debug-cxx-interop" { } ''
-                    bash ${./tests/debug-cxx-interop.sh} ${swift} ${ios-sdk}/darwin.artifactbundle
-                    touch $out
-                  '';
-                };
-              });
-          xcbuild = pkgs.callPackage ./pkgs/xcbuild.nix { };
-          apple-dev = pkgs.callPackage ./pkgs/fhs.nix {
-            inherit mkFHSEnv;
-            flakeSrc = self.outPath;
-            upstream = upstream-patched;
-            # first on PATH: python-env's python3 has cryptography for upstream's tools
-            tools = [
-              python-env
-              tools.xtool
+              # first on PATH: python-env's python3 has cryptography for upstream's tools
+              tools = [
+                python-env
+                tools.xtool
+                ipsw
+                pkgs.rcodesign
+                xcbuild
+              ];
+            };
+          in
+          {
+            inherit
+              swift
               ipsw
-              pkgs.rcodesign
+              python-env
+              upstream-patched
+              apple-dev
+              ios-sdk
               xcbuild
-            ];
-          };
-        in
-        {
-          inherit
-            swift
-            ipsw
-            python-env
-            upstream-patched
-            apple-dev
-            ios-sdk
-            xcbuild
-            ;
-          inherit (tools) xtool open-apple-macros actool;
-          usbmuxd = pkgs.callPackage ./pkgs/usbmuxd-service.nix { };
-          default = apple-dev;
-        }
+              ;
+            inherit (tools) xtool open-apple-macros actool;
+            usbmuxd = pkgs.callPackage ./pkgs/usbmuxd-service.nix { };
+            default = apple-dev;
+          }
       );
 
       # One command each, no NixOS module needed:
@@ -135,24 +152,36 @@
         pkgs:
         let
           p = self.packages.${pkgs.stdenv.hostPlatform.system};
+          mkApp = program: description: {
+            type = "app";
+            inherit program;
+            meta.description = description;
+          };
         in
-        {
-          default = {
-            type = "app";
-            program = "${p.apple-dev}/bin/apple-dev";
-            meta.description = "Open the apple-dev shell, or run one command in it";
-          };
-          setup = {
-            type = "app";
-            program = "${p.apple-dev}/bin/apple-dev-setup";
-            meta.description = "Build the iOS SDK from Xcode_27.xip in the Nix store and link it for SwiftPM";
-          };
-          usbmuxd = {
-            type = "app";
-            program = "${p.usbmuxd}/bin/apple-dev-usbmuxd";
-            meta.description = "Start usbmuxd for an iPhone on USB (as root, until the next reboot)";
-          };
-        }
+        if pkgs.stdenv.hostPlatform.isDarwin then
+          {
+            default = mkApp "${p.sim-lease}/bin/sim-lease" "Lease a slim iOS simulator and run a command";
+            sim-lease = mkApp "${p.sim-lease}/bin/sim-lease" "Lease a slim iOS simulator and run a command";
+            simslim = mkApp "${p.simslim}/bin/simslim" "Turn off unneeded simulator background services";
+          }
+        else
+          {
+            default = {
+              type = "app";
+              program = "${p.apple-dev}/bin/apple-dev";
+              meta.description = "Open the apple-dev shell, or run one command in it";
+            };
+            setup = {
+              type = "app";
+              program = "${p.apple-dev}/bin/apple-dev-setup";
+              meta.description = "Build the iOS SDK from Xcode_27.xip in the Nix store and link it for SwiftPM";
+            };
+            usbmuxd = {
+              type = "app";
+              program = "${p.usbmuxd}/bin/apple-dev-usbmuxd";
+              meta.description = "Start usbmuxd for an iPhone on USB (as root, until the next reboot)";
+            };
+          }
       );
 
       formatter = forAll (pkgs: pkgs.nixfmt-tree);
@@ -162,57 +191,68 @@
         pkgs:
         let
           p = self.packages.${pkgs.stdenv.hostPlatform.system};
-        in
-        {
-          inherit (p)
-            xtool
-            actool
-            open-apple-macros
-            python-env
-            ipsw
-            upstream-patched
-            apple-dev
-            usbmuxd
-            xcbuild
-            ;
-          # the xcodeproj gem loads, the settings resolver and header maps work, and
-          # incremental builds redo what changed (with the toolchain's clang and llvm-ar)
-          xcbuild-runs = pkgs.runCommand "xcbuild-runs" { } ''
-            ${p.xcbuild}/bin/apple-dev-xcbuild --help | grep -q workspace-dir
-            ${pkgs.ruby.withPackages (ps: [ ps.xcodeproj ])}/bin/ruby -e 'require "xcodeproj"'
-            PATH=${p.swift}/usr/bin:$PATH ${pkgs.python3}/bin/python3 ${./xcbuild}/test_xcbuild.py
-            touch $out
-          '';
-          # Upstream ibtool's golden self-test and its React Native launch screen test.
-          ibtool-golden = pkgs.runCommand "ibtool-golden" { } ''
-            ${pkgs.python3}/bin/python3 ${p.upstream-patched}/tools/ibtool --self-test
-            ${pkgs.python3}/bin/python3 ${p.upstream-patched}/tests/test_ibtool_react_native.py
-            touch $out
-          '';
-          xtool-runs = pkgs.runCommand "xtool-runs" { } ''
-            ${p.xtool}/bin/xtool --help | grep -q "Cross-platform Xcode replacement"
-            touch $out
-          '';
-          # The patched toolchain, outside any FHS environment: compile, link
-          # and run a Linux program with Foundation, and start lldb.
-          swift-runs = pkgs.runCommand "swift-runs" { } ''
-            export HOME=$TMPDIR SDKROOT=${p.swift}/sysroot
-            echo 'import Foundation; print("swift ok", ProcessInfo.processInfo.processorCount > 0)' > hello.swift
-            ${p.swift}/usr/bin/swiftc hello.swift -o hello
-            ./hello | grep -qx "swift ok true"
-            ${p.swift}/usr/bin/lldb --version | grep -q "lldb version"
-            touch $out
-          '';
-          python-imports = pkgs.runCommand "python-imports" { } ''
-            ${p.python-env}/bin/python3 -c "import pymobiledevice3, cryptography, lzfse; from pymobiledevice3.services.installation_proxy import InstallationProxyService"
-            ${p.python-env}/bin/pymobiledevice3 version > $out
-          '';
           formatting = pkgs.runCommand "formatting" { nativeBuildInputs = [ pkgs.nixfmt ]; } ''
             cd ${self}
             nixfmt --check $(find . -name '*.nix')
             touch $out
           '';
-        }
+        in
+        if pkgs.stdenv.hostPlatform.isDarwin then
+          {
+            inherit (p) simslim sim-lease;
+            inherit formatting;
+            sim-lease-runs = pkgs.runCommand "sim-lease-runs" { } ''
+              ${p.sim-lease}/bin/sim-lease --help | grep -q 'SIM_UDID'
+              touch $out
+            '';
+          }
+        else
+          {
+            inherit (p)
+              xtool
+              actool
+              open-apple-macros
+              python-env
+              ipsw
+              upstream-patched
+              apple-dev
+              usbmuxd
+              xcbuild
+              ;
+            # the xcodeproj gem loads, the settings resolver and header maps work, and
+            # incremental builds redo what changed (with the toolchain's clang and llvm-ar)
+            xcbuild-runs = pkgs.runCommand "xcbuild-runs" { } ''
+              ${p.xcbuild}/bin/apple-dev-xcbuild --help | grep -q workspace-dir
+              ${pkgs.ruby.withPackages (ps: [ ps.xcodeproj ])}/bin/ruby -e 'require "xcodeproj"'
+              PATH=${p.swift}/usr/bin:$PATH ${pkgs.python3}/bin/python3 ${./xcbuild}/test_xcbuild.py
+              touch $out
+            '';
+            # Upstream ibtool's golden self-test and its React Native launch screen test.
+            ibtool-golden = pkgs.runCommand "ibtool-golden" { } ''
+              ${pkgs.python3}/bin/python3 ${p.upstream-patched}/tools/ibtool --self-test
+              ${pkgs.python3}/bin/python3 ${p.upstream-patched}/tests/test_ibtool_react_native.py
+              touch $out
+            '';
+            xtool-runs = pkgs.runCommand "xtool-runs" { } ''
+              ${p.xtool}/bin/xtool --help | grep -q "Cross-platform Xcode replacement"
+              touch $out
+            '';
+            # The patched toolchain, outside any FHS environment: compile, link
+            # and run a Linux program with Foundation, and start lldb.
+            swift-runs = pkgs.runCommand "swift-runs" { } ''
+              export HOME=$TMPDIR SDKROOT=${p.swift}/sysroot
+              echo 'import Foundation; print("swift ok", ProcessInfo.processInfo.processorCount > 0)' > hello.swift
+              ${p.swift}/usr/bin/swiftc hello.swift -o hello
+              ./hello | grep -qx "swift ok true"
+              ${p.swift}/usr/bin/lldb --version | grep -q "lldb version"
+              touch $out
+            '';
+            python-imports = pkgs.runCommand "python-imports" { } ''
+              ${p.python-env}/bin/python3 -c "import pymobiledevice3, cryptography, lzfse; from pymobiledevice3.services.installation_proxy import InstallationProxyService"
+              ${p.python-env}/bin/pymobiledevice3 version > $out
+            '';
+            inherit formatting;
+          }
       );
 
       nixosModules.default = import ./modules/nixos.nix self;
