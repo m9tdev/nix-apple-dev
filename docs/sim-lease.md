@@ -169,9 +169,16 @@ Flags override the corresponding environment variable for that invocation.
 
 The queue lock is `$SIM_LEASE_STATE_DIR/queue.lock`, shared by all prefixes,
 rather than living in a project checkout. Keep the state directory and
-`SIM_LEASE_MAX_BOOTED` setting consistent across projects. `--max-booted` is
+`SIM_LEASE_MAX_BOOTED` setting consistent across projects.
+
+**Warning:** `SIM_LEASE_MAX_BOOTED` is read independently for every invocation;
+it is not stored in the queue. Set it to the same value in shared host
+configuration for every project and job. A single job with a larger environment
+value can raise its own observed cap and overcommit the host. `--max-booted` is
 accepted for `init` and configuration reports, but ignored with a warning for
-`run`, so one job cannot raise the shared cap through its command-line flags.
+`run`; that only prevents command-line flag overrides, not environment
+overrides.
+
 CoreSimulator itself is per macOS user, so every participating project must run
 as that user for a common view of booted devices.
 
@@ -211,6 +218,13 @@ sim-lease undo POOL_UDID
 
 `undo` calls the private `simslim off` implementation internally; do not try to
 undo slimming by erasing a simulator. `sim-lease status` lists the pool UDIDs.
+
+**An undone simulator is stock and no longer matches the pool's slim profile.**
+A later `run` that selects it boots it, fails `simslim verify`, cleans and shuts
+it down, and returns an error. If the pool remains in service, run
+`sim-lease init` again after any undo so every member is slim and verified.
+Otherwise undo every pool member before tearing the pool down as below; do not
+leave a mixed stock/slim pool for future runs.
 
 Deleting devices is separate and irreversible. Only after the pool owner agrees,
 delete the explicitly identified pool UDIDs, never a name pattern or `all`:
