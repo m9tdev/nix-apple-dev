@@ -203,6 +203,10 @@
               ${p.sim-lease}/bin/sim-lease --help | grep -q 'SIM_UDID'
               touch $out
             '';
+            sim-lease-protected = pkgs.runCommand "sim-lease-protected" { } ''
+              bash ${./tests/sim-lease-protected.sh} ${p.sim-lease}/bin/sim-lease
+              touch $out
+            '';
           }
         else
           {
