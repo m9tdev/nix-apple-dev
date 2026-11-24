@@ -220,6 +220,26 @@
                   bash ${./tests/sim-lease-devices.sh} ${p.sim-lease}/bin/sim-lease
                   touch $out
                 '';
+            # The same script with simslim replaced by the test's stateful fake.
+            sim-lease-recovery =
+              let
+                fakeSimslim = pkgs.writeShellScriptBin "simslim" ''
+                  exec "''${FAKE_SIMSLIM:?simslim is not stubbed in this test}" "$@"
+                '';
+                sim-lease = p.sim-lease.override { simslim = fakeSimslim; };
+              in
+              pkgs.runCommand "sim-lease-recovery"
+                {
+                  nativeBuildInputs = [
+                    pkgs.coreutils
+                    pkgs.jq
+                    pkgs.util-linux
+                  ];
+                }
+                ''
+                  bash ${./tests/sim-lease-recovery.sh} ${sim-lease}/bin/sim-lease
+                  touch $out
+                '';
           }
         else
           {
