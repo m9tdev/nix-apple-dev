@@ -25,6 +25,7 @@ CURRENT_STARTED=
 CAPACITY_ANNOUNCED=0
 CAPACITY_WAITING=0
 CURRENT_CLEANUP=slim
+UNDO_STOCK=0
 
 # Known non-pool devices. This list is additive: an environment variable can
 # protect more UDIDs, but cannot remove a built-in protection.
@@ -44,14 +45,16 @@ Usage:
   sim-lease init [--device iphone|duo] [--device-type TYPE] [--runtime RUNTIME] [--pool-size N] [--max-booted N]
   sim-lease run [--device iphone|duo] [--device-type TYPE] [--runtime RUNTIME] -- COMMAND [ARG ...]
   sim-lease status [--device iphone|duo] [--device-type TYPE] [--runtime RUNTIME]
-  sim-lease undo [--device iphone|duo] POOL_UDID
+  sim-lease undo [--device iphone|duo] [--stock] POOL_UDID
   sim-lease --help
 
 Commands:
   init     Create missing fixed pool sims, run simslim on each, then shut them down.
   run      Queue for a boot slot, lease a pool sim, and run COMMAND with SIM_UDID.
   status   Show pool devices, lease liveness, booted devices, and orphans.
-  undo     Restore one unprotected pool UDID to stock, verify, and shut it down.
+  undo     Reset one unprotected pool UDID for reuse: reclaim a stale lease, apply
+           and verify simslim, clean it, and shut it down. With --stock, restore
+           it to stock instead (teardown): run refuses it until init.
 
 --device selects the pool: iphone (default, ${SIM_LEASE_PREFIX:-pool-}iphone-1..N)
 or duo (iPhone Duo, ${SIM_LEASE_PREFIX:-pool-}duo-1..N, one sim by default).
@@ -278,6 +281,12 @@ release_current() {
   trap - EXIT INT TERM HUP
   set +e
   if [[ -n $CURRENT_UDID ]]; then
+    # The caller may be gone: a dropped SSH session closes our output pipes.
+    # SIGPIPE is ignored, so a failed write shows it; then clean up silently.
+    exec 1>&2
+    if ! log "releasing $CURRENT_NAME ($CURRENT_UDID)"; then
+      exec 1>/dev/null 2>&1
+    fi
     if [[ $CURRENT_CLEANUP == stock ]]; then
       log "shutting down stock pool sim $CURRENT_UDID"
       assert_unprotected_udid "$CURRENT_UDID"
@@ -299,6 +308,10 @@ release_current() {
 }
 
 install_cleanup_trap() {
+  # Without this, the first write after the caller's pipes close (a dropped SSH
+  # session) kills sim-lease before its EXIT trap can clean the sim. A failed
+  # write is an error instead, which still ends in release_current.
+  trap '' PIPE
   trap release_current EXIT
   trap 'exit 130' INT
   trap 'exit 143' TERM
@@ -527,7 +540,12 @@ cmd_run() {
   log "leased $CURRENT_NAME to PID $$"
 
   set +e
-  SIM_UDID="$CURRENT_UDID" SIM_LEASE_DEVICE="$CURRENT_NAME" "${command[@]}" 8>&- 9>&-
+  # COMMAND gets the default SIGPIPE disposition back.
+  (
+    trap - PIPE
+    export SIM_UDID="$CURRENT_UDID" SIM_LEASE_DEVICE="$CURRENT_NAME"
+    exec "${command[@]}"
+  ) 8>&- 9>&-
   local rc=$?
   set -e
   exit "$rc"
@@ -563,11 +581,19 @@ cmd_undo() {
   reclaim_lease_locked "$udid" || true
   CURRENT_UDID=$udid
   CURRENT_NAME=$found_name
-  CURRENT_CLEANUP=stock
-  "$SIMSLIM" off "$udid"
-  status_json=$("$SIMSLIM" status "$udid" --json)
-  jq -e '.managedDisabled == 0' <<<"$status_json" >/dev/null || die "simulator is not stock after undo"
-  "$SIMSLIM" status "$udid"
+  if [[ $UNDO_STOCK -eq 1 ]]; then
+    CURRENT_CLEANUP=stock
+    "$SIMSLIM" off "$udid"
+    status_json=$("$SIMSLIM" status "$udid" --json)
+    jq -e '.managedDisabled == 0' <<<"$status_json" >/dev/null || die "simulator is not stock after undo"
+    "$SIMSLIM" status "$udid"
+    return
+  fi
+  # Leave the member as run expects it: slim and verified, then (on exit) clean
+  # and shut down, exactly like the end of a lease.
+  log "resetting $found_name ($udid) for reuse"
+  "$SIMSLIM" on "$udid"
+  "$SIMSLIM" verify "$udid"
 }
 
 cmd_status() {
@@ -665,6 +691,11 @@ while (($#)); do
         MAX_BOOTED=$2
       fi
       shift 2
+      ;;
+    --stock)
+      [[ $COMMAND == undo ]] || die "--stock is only valid for undo"
+      UNDO_STOCK=1
+      shift
       ;;
     --)
       shift
