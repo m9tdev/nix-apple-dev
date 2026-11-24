@@ -12,7 +12,9 @@ booting another simulator for every job:
 - a lease exports the simulator UDID to the test command and always cleans and
   shuts down the simulator afterwards;
 - stale leases are recovered through device-lock ownership; PID liveness is
-  diagnostic and used for the `STALE` status label, not for mutation safety.
+  diagnostic and used for the `STALE` status label, not for mutation safety;
+- `xcrun` and `simctl` guard shims refuse simctl calls on a leased simulator
+  from outside its lease (see [Guard against use outside a lease](#guard-against-use-outside-a-lease)).
 
 The tool is a plain Bash CLI. It does not depend on a particular CI system or
 automation tool. Packages are available for `aarch64-darwin`; Xcode and an
@@ -24,7 +26,8 @@ installed iOS Simulator runtime are required.
 # Run directly; nothing is added to a profile.
 nix run github:m9tdev/nix-apple-dev#sim-lease -- --help
 
-# Or install the one public command in the user's Nix profile.
+# Or install it in the user's Nix profile: this adds sim-lease and the
+# xcrun/simctl guard shims, which then guard every shell of that user.
 nix profile install github:m9tdev/nix-apple-dev#sim-lease
 ```
 
@@ -112,6 +115,10 @@ exports these variables to the command:
 |---|---|
 | `SIM_UDID` | UDID of the leased simulator; use this in the test destination |
 | `SIM_LEASE_DEVICE` | Pool name, such as `pool-iphone-1` |
+| `SIM_LEASE_TOKEN` | This lease's token; the guard shims let calls on the leased sim through only with it |
+
+The command also runs with the guard shims first on `PATH`, so its own
+`xcrun simctl …` and `simctl …` calls on `$SIM_UDID` work as usual.
 
 The command's exit status is preserved. Before the command starts, and again in
 an EXIT/HUP/INT/TERM trap afterwards, `sim-lease` uninstalls non-Apple user
@@ -145,6 +152,53 @@ shuts down only orphaned exact members (`iphone-N` or `duo-N`) of the prefix's p
 down, erases, uninstalls from, or deletes a non-pool simulator.** Other pool
 prefixes and even differently named `pool-…` devices are external too. The
 script has no simulator-delete command and never deletes a simulator or runtime.
+
+## Guard against use outside a lease
+
+A pool simulator belongs to its lease while the lease runs. A process outside
+it, for example a helper of a session whose own lease is still queued, or a
+script that read a UDID saved by an earlier lease, must not install apps on it,
+send it input, or shut it down. The package therefore ships two shims next to
+`sim-lease`: `bin/xcrun` and `bin/simctl` (`simctl ARGS` runs `xcrun simctl
+ARGS`). Each `run` gives its lease a random token, stores it in the lease record
+under `$SIM_LEASE_STATE_DIR`, and exports it to its command as
+`SIM_LEASE_TOKEN`. While any lease is live, a simctl call through a shim:
+
+- on a leased UDID (any case) or pool name, without that lease's token, fails
+  with exit status 77 and a message naming the sim, the holder PID and the
+  remedy;
+- on the target `booted` or `all`, fails the same way from any process: either
+  can resolve to a leased simulator. Use an explicit UDID (`$SIM_UDID`);
+- otherwise passes through unchanged, as does every other `xcrun` tool.
+  `simctl list` (where `booted` is a filter), simulators outside the pool, free
+  pool members, and everything when no lease is live are not affected.
+
+```text
+sim-lease-guard: refusing 'simctl install 11111111-…': pool-iphone-1 (11111111-…) is leased to sim-lease PID 4242 since 2026-01-01T00:00:00Z, and this process does not hold that lease.
+sim-lease-guard: use a pool simulator only inside 'sim-lease run -- COMMAND', through the SIM_UDID it exports; a UDID saved by an earlier lease is stale.
+```
+
+Refusals are appended to `$SIM_LEASE_STATE_DIR/guard.log`, and when a lease
+ends `sim-lease` warns how many calls on its sim were refused.
+
+The shims only see what goes through them. They guard shells whose `PATH`
+finds them first: inside `sim-lease run` always, and elsewhere when the package
+is installed in the user's Nix profile and that profile's `bin` comes before
+`/usr/bin`, with no other `xcrun` earlier on `PATH` (check with
+`type -a xcrun`). They pass everything else to the next `xcrun` on `PATH`,
+skipping themselves. They do **not** see:
+
+- `/usr/bin/xcrun`, or `simctl` inside Xcode, called by absolute path;
+- tools that talk to CoreSimulator directly rather than through `simctl`, such
+  as `xcodebuild -destination id=…`, Xcode, Simulator.app, or input tools that
+  use Apple's private frameworks;
+- a determined caller: every process of the same macOS user can read the lease
+  record, token included. The guard prevents mistakes, not misuse.
+
+Free pool members are not guarded (`init`, `undo` and orphan recovery work on
+them outside any lease). They are shut down between leases, so most calls on
+one fail anyway, and the next lease cleans it on entry; but a stale caller can
+still boot, erase or delete a free member.
 
 ## Protected non-pool UDIDs
 
@@ -189,8 +243,8 @@ sim-lease --help
 
 - `init`: create missing fixed pool members, apply and verify `simslim`, then
   shut down each member. It uses the same boot cap and queue as `run`.
-- `run`: wait for capacity and a free lease, boot, run the command, clean, shut
-  down, and release. Two commands can run concurrently with the default cap;
+- `run`: wait for capacity and a free lease, boot, run the command (with the
+  guard shims first on `PATH`), clean, shut down, and release. Two commands can run concurrently with the default cap;
   a third waits.
 - `status`: read-only pool, lease, active/booted-device, and orphan report.
 - `undo`: reset exactly one unprotected member of the selected pool for reuse:
@@ -314,8 +368,8 @@ Remove the public Nix command with:
 nix profile remove sim-lease
 ```
 
-The private `simslim` store-path dependency is not installed as a profile
-command and has no separate flake app/package/overlay to remove.
+This also removes the `xcrun` and `simctl` guard shims. The private `simslim`
+store-path dependency is not installed as a profile command and has no separate flake app/package/overlay to remove.
 
 ## Tests
 

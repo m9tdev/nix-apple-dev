@@ -240,6 +240,25 @@
                   bash ${./tests/sim-lease-recovery.sh} ${sim-lease}/bin/sim-lease
                   touch $out
                 '';
+            sim-lease-guard =
+              let
+                fakeSimslim = pkgs.writeShellScriptBin "simslim" ''
+                  exec "''${FAKE_SIMSLIM:?simslim is not stubbed in this test}" "$@"
+                '';
+                sim-lease = p.sim-lease.override { simslim = fakeSimslim; };
+              in
+              pkgs.runCommand "sim-lease-guard"
+                {
+                  nativeBuildInputs = [
+                    pkgs.coreutils
+                    pkgs.jq
+                    pkgs.util-linux
+                  ];
+                }
+                ''
+                  bash ${./tests/sim-lease-guard.sh} ${sim-lease}/bin/sim-lease
+                  touch $out
+                '';
           }
         else
           {

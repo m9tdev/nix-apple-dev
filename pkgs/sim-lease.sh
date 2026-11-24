@@ -22,6 +22,10 @@ RUNTIME=
 CURRENT_UDID=
 CURRENT_NAME=
 CURRENT_STARTED=
+CURRENT_TOKEN=
+# The xcrun/simctl guard shims, put first on PATH for a lease's command. Set by
+# the packaging; without it the command runs with the caller's PATH.
+GUARD_DIR=${GUARD_DIR:-}
 CAPACITY_ANNOUNCED=0
 CAPACITY_WAITING=0
 CURRENT_CLEANUP=slim
@@ -204,6 +208,24 @@ lease_pid() {
   jq -er '.pid | select(type == "number" and . > 0)' "$(lease_file "$1")" 2>/dev/null
 }
 
+# A per-lease token. The guard shims let a simctl call on a leased sim through
+# only from a process whose SIM_LEASE_TOKEN matches the lease record. It keeps
+# out mistakes (a stale UDID, a helper outside the lease), not a determined
+# caller of the same macOS user, who can read the record.
+new_lease_token() {
+  od -An -N16 -tx1 /dev/urandom | tr -d ' \n'
+}
+
+# How many simctl calls the guard refused on this lease's sim.
+report_refusals() {
+  local count
+  [[ -n $CURRENT_TOKEN && -f $STATE_DIR/guard.log ]] || return 0
+  count=$(grep -cF -- "$CURRENT_TOKEN" "$STATE_DIR/guard.log" || true)
+  if [[ $count =~ ^[1-9][0-9]*$ ]]; then
+    log "warning: refused $count simctl calls on this sim from outside the lease (see $STATE_DIR/guard.log)"
+  fi
+}
+
 lease_live() {
   local udid=$1 pid
   [[ -f $(lease_file "$udid") ]] || return 1
@@ -228,7 +250,8 @@ write_lease() {
   tmp=$file.tmp.$$
   jq -n --arg udid "$CURRENT_UDID" --arg name "$CURRENT_NAME" \
     --arg state "$state" --arg started "$CURRENT_STARTED" --argjson pid "$$" \
-    '{udid: $udid, name: $name, pid: $pid, state: $state, started: $started}' >"$tmp"
+    --arg token "$CURRENT_TOKEN" \
+    '{udid: $udid, name: $name, pid: $pid, state: $state, started: $started, token: $token}' >"$tmp"
   mv "$tmp" "$file"
 }
 
@@ -294,6 +317,7 @@ release_current() {
     else
       cleanup_device "$CURRENT_UDID" || cleanup_rc=$?
     fi
+    report_refusals
     rm -f "$(lease_file "$CURRENT_UDID")"
     flock -u 8
     exec 8>&-
@@ -512,6 +536,10 @@ cmd_run() {
       CURRENT_UDID=$udid
       CURRENT_NAME=$name
       CURRENT_STARTED=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+      CURRENT_TOKEN=$(new_lease_token)
+      [[ $CURRENT_TOKEN =~ ^[0-9a-f]{32}$ ]] || die "cannot create a lease token"
+      # sim-lease's own simctl calls on the sim (and simslim's) pass the guard.
+      export SIM_LEASE_TOKEN=$CURRENT_TOKEN
       write_lease booting
       break
     done
@@ -544,6 +572,9 @@ cmd_run() {
   (
     trap - PIPE
     export SIM_UDID="$CURRENT_UDID" SIM_LEASE_DEVICE="$CURRENT_NAME"
+    if [[ -n $GUARD_DIR ]]; then
+      export PATH="$GUARD_DIR:$PATH"
+    fi
     exec "${command[@]}"
   ) 8>&- 9>&-
   local rc=$?
