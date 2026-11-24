@@ -122,11 +122,22 @@ holder crashed. Exit cleaning and shutdown happen even when the test fails.
 Cleanup does not use `simctl erase`, so it does not depend on erase preserving
 host-side launchd state.
 
-If a holder is killed with `SIGKILL`, its trap cannot run and its device lock is
-released by the kernel. A later `run` acquires that lock and reclaims the lease
-record, then cleans and shuts down the stale pool member before reuse. The PID
-in the record is diagnostic: `status` labels a dead PID `STALE`, while lock
-ownership—not a possibly reused PID—decides whether recovery may mutate a sim.
+If the caller goes away mid-run, for example when an SSH session without a
+terminal drops and its output pipes close, the command typically dies of
+`SIGPIPE`. `sim-lease` itself ignores `SIGPIPE` (the command gets the default
+back), so it still cleans and shuts down the simulator and releases the lease,
+with its remaining output discarded.
+
+If a holder is killed with `SIGKILL`, its trap cannot run: the simulator stays
+booted and `status` shows it `STALE` and `ORPHAN`. Its device lock is released
+by the kernel. The next `run` of any kind acquires that lock and reclaims the
+lease record, then cleans and shuts down the stale pool member before counting
+active simulators, so a stale member never holds a slot of the boot cap. It
+then leases a member as usual. The PID in the record is diagnostic: `status`
+labels a dead PID `STALE`, while lock ownership—not a possibly reused PID—
+decides whether recovery may mutate a sim. A member whose lock is still held
+(by a live holder, or by any process that inherited the lock) is never taken.
+`sim-lease undo` (below) resets one member by hand without waiting for a run.
 
 Before booting, `run` executes `xcrun simctl list devices booted --json`. It
 reports external booted simulators and orphaned pool members. It cleans and
@@ -172,7 +183,7 @@ enforce the cap consistently.
 sim-lease init [--device iphone|duo] [--device-type TYPE] [--runtime RUNTIME] [--pool-size N] [--max-booted N]
 sim-lease run [--device iphone|duo] [--device-type TYPE] [--runtime RUNTIME] -- COMMAND [ARG ...]
 sim-lease status [--device iphone|duo] [--device-type TYPE] [--runtime RUNTIME]
-sim-lease undo [--device iphone|duo] POOL_UDID
+sim-lease undo [--device iphone|duo] [--stock] POOL_UDID
 sim-lease --help
 ```
 
@@ -182,8 +193,10 @@ sim-lease --help
   down, and release. Two commands can run concurrently with the default cap;
   a third waits.
 - `status`: read-only pool, lease, active/booted-device, and orphan report.
-- `undo`: restore exactly one unprotected member of the selected pool to stock,
-  verify zero disabled managed services, and shut it down. It refuses live
+- `undo`: reset exactly one unprotected member of the selected pool for reuse:
+  reclaim a stale lease, apply and verify `simslim`, clean it, and shut it
+  down. With `--stock`, restore it to stock instead, verify zero disabled
+  managed services, and shut it down (teardown). Either way it refuses live
   leases and uses the same queue and active-sim cap.
 
 ## Environment and flags
@@ -247,25 +260,39 @@ simulator. Use the exact UDID rather than a destination name such as
 
 ## Undo
 
-First stop users of the pool. Restore one pool UDID at a time to stock, verify
-that zero managed launchd labels remain disabled, and leave it shut down:
+`sim-lease undo` resets one pool member so that the next `run` accepts it, for
+example a member left booted by a holder that died. It refuses a live lease,
+reclaims a stale one, applies and verifies `simslim` (as `init` does), uninstalls
+user apps, resets the keychain, and shuts the simulator down:
 
 ```sh
 sim-lease undo POOL_UDID
-# expected status output: 0/N managed launchd labels disabled (stock)
 ```
 
 For a Duo member, pass the device too: `sim-lease undo --device duo POOL_UDID`.
+`sim-lease status` lists the pool UDIDs.
 
-`undo` calls the private `simslim off` implementation internally; do not try to
-undo slimming by erasing a simulator. `sim-lease status` lists the pool UDIDs.
+### Restore a member to stock
 
-**An undone simulator is stock and no longer matches the pool's slim profile.**
-A later `run` that selects it boots it, fails `simslim verify`, cleans and shuts
-it down, and returns an error. If the pool remains in service, run
-`sim-lease init` again after any undo so every member is slim and verified.
-Otherwise undo every pool member before tearing the pool down as below; do not
-leave a mixed stock/slim pool for future runs.
+To take slimming off a member, for example before tearing the pool down, use
+the explicit `--stock` step. First stop users of the pool. Restore one pool UDID
+at a time to stock, verify that zero managed launchd labels remain disabled,
+and leave it shut down:
+
+```sh
+sim-lease undo --stock POOL_UDID
+# expected status output: 0/N managed launchd labels disabled (stock)
+```
+
+`undo --stock` calls the private `simslim off` implementation internally; do
+not try to undo slimming by erasing a simulator.
+
+**A stock simulator no longer matches the pool's slim profile.** A later `run`
+that selects it boots it, fails `simslim verify`, cleans and shuts it down, and
+returns an error. If the pool remains in service, run `sim-lease undo` (without
+`--stock`) or `sim-lease init` again so every member is slim and verified.
+Otherwise restore every pool member to stock before tearing the pool down as
+below; do not leave a mixed stock/slim pool for future runs.
 
 Deleting devices is separate and irreversible. Only after the pool owner agrees,
 delete the explicitly identified pool UDIDs, never a name pattern or `all`:
@@ -276,7 +303,7 @@ xcrun simctl delete POOL_UDID
 
 Never delete protected or other projects' simulators or any installed runtime.
 
-To stop offering the Duo pool, undo `pool-duo-1` as above, delete only its UDID
+To stop offering the Duo pool, restore `pool-duo-1` to stock as above, delete only its UDID
 (from `sim-lease status --device duo`) if wanted, and stop passing
 `--device duo`. The iPhone pool is unaffected. To go back to a release without
 Duo support, also remove `pool-duo-1` first: older releases treat it as an
@@ -289,3 +316,15 @@ nix profile remove sim-lease
 
 The private `simslim` store-path dependency is not installed as a profile
 command and has no separate flake app/package/overlay to remove.
+
+## Tests
+
+The tests run against fake `xcrun`, `simslim` and `plutil` commands, so they
+need no simulator and also run on Linux. From a checkout, with bash, coreutils,
+util-linux (`flock`) and jq (and shellcheck, if installed):
+
+```sh
+bash tests/sim-lease-local.sh
+```
+
+On macOS, `nix flake check` runs the same tests against the packaged command.
