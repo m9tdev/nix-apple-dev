@@ -1,7 +1,17 @@
 # shellcheck shell=bash
 
 PREFIX=${SIM_LEASE_PREFIX:-pool-}
-POOL_SIZE=${SIM_LEASE_POOL_SIZE:-2}
+IPHONE_POOL_SIZE=${SIM_LEASE_POOL_SIZE:-2}
+DUO_POOL_SIZE=${SIM_LEASE_DUO_POOL_SIZE:-1}
+POOL_SIZE_FLAG=
+POOL_SIZE=
+# Device kinds sharing one prefix, queue, state directory, and boot cap.
+# iphone: the base iPhone pool (default). duo: the iPhone Duo pool, which needs
+# Apple's device-specific runtime (for example iOS-27-2-iPhone19-4).
+DEVICE=iphone
+MEMBER_STEM=iphone
+DEVICE_TYPE_FLAG=
+DUO_DEVICE_TYPE=com.apple.CoreSimulator.SimDeviceType.iPhone-Duo
 MAX_BOOTED=${SIM_LEASE_MAX_BOOTED:-2}
 STATE_DIR=${SIM_LEASE_STATE_DIR:-/tmp/sim-lease}
 POLL_INTERVAL=${SIM_LEASE_POLL_INTERVAL:-2}
@@ -20,6 +30,7 @@ CURRENT_CLEANUP=slim
 # protect more UDIDs, but cannot remove a built-in protection.
 PROTECTED_UDIDS=(
   "EDD04C40-B5A6-4135-A2BB-19444D4E00B4" # GBO Wallet VM-test
+  "E1C0D127-94F5-4FF6-B9D8-400507B67947" # iPhone Duo base sim (not a pool member)
 )
 PROTECTED_EXTRA=${SIM_LEASE_PROTECTED_UDIDS:-}
 if [[ -n $PROTECTED_EXTRA ]]; then
@@ -30,10 +41,10 @@ fi
 usage() {
   cat <<'EOF'
 Usage:
-  sim-lease init [--device-type TYPE] [--runtime RUNTIME] [--pool-size N] [--max-booted N]
-  sim-lease run [--device-type TYPE] [--runtime RUNTIME] -- COMMAND [ARG ...]
-  sim-lease status [--device-type TYPE] [--runtime RUNTIME]
-  sim-lease undo POOL_UDID
+  sim-lease init [--device iphone|duo] [--device-type TYPE] [--runtime RUNTIME] [--pool-size N] [--max-booted N]
+  sim-lease run [--device iphone|duo] [--device-type TYPE] [--runtime RUNTIME] -- COMMAND [ARG ...]
+  sim-lease status [--device iphone|duo] [--device-type TYPE] [--runtime RUNTIME]
+  sim-lease undo [--device iphone|duo] POOL_UDID
   sim-lease --help
 
 Commands:
@@ -42,8 +53,10 @@ Commands:
   status   Show pool devices, lease liveness, booted devices, and orphans.
   undo     Restore one unprotected pool UDID to stock, verify, and shut it down.
 
-Pool sims are named ${SIM_LEASE_PREFIX:-pool-}iphone-1..N. run never creates,
-erases, or deletes a simulator. Cleanup uninstalls user apps, resets the
+--device selects the pool: iphone (default, ${SIM_LEASE_PREFIX:-pool-}iphone-1..N)
+or duo (iPhone Duo, ${SIM_LEASE_PREFIX:-pool-}duo-1..N, one sim by default).
+--device-type cannot be combined with --device duo. The boot cap is shared by
+all device kinds. run never creates, erases, or deletes a simulator. Cleanup uninstalls user apps, resets the
 keychain, verifies simslim state, and shuts down only the leased pool sim.
 EOF
 }
@@ -72,9 +85,30 @@ assert_unprotected_udid() {
   fi
 }
 
+select_device() {
+  case $DEVICE in
+    iphone)
+      MEMBER_STEM=iphone
+      POOL_SIZE=${POOL_SIZE_FLAG:-$IPHONE_POOL_SIZE}
+      IPHONE_POOL_SIZE=$POOL_SIZE
+      ;;
+    duo)
+      [[ -z $DEVICE_TYPE_FLAG ]] || die "--device-type cannot be combined with --device duo"
+      MEMBER_STEM=duo
+      POOL_SIZE=${POOL_SIZE_FLAG:-$DUO_POOL_SIZE}
+      DUO_POOL_SIZE=$POOL_SIZE
+      DEVICE_TYPE_REQUEST=$DUO_DEVICE_TYPE
+      ;;
+    *)
+      die "unknown device: $DEVICE (expected iphone or duo)"
+      ;;
+  esac
+}
+
 validate_settings() {
   [[ $PREFIX =~ ^pool-[A-Za-z0-9._-]*$ ]] || die "SIM_LEASE_PREFIX must match pool-[A-Za-z0-9._-]*"
-  [[ $POOL_SIZE =~ ^[1-9][0-9]*$ ]] || die "pool size must be a positive integer"
+  [[ $IPHONE_POOL_SIZE =~ ^[1-9][0-9]*$ ]] || die "pool size must be a positive integer"
+  [[ $DUO_POOL_SIZE =~ ^[1-9][0-9]*$ ]] || die "Duo pool size must be a positive integer"
   [[ $MAX_BOOTED =~ ^[1-9][0-9]*$ ]] || die "max booted must be a positive integer"
   [[ $POLL_INTERVAL =~ ^[0-9]+([.][0-9]+)?$ ]] || die "poll interval must be numeric"
   POOL_STATE=$STATE_DIR/$PREFIX
@@ -107,13 +141,15 @@ resolve_config() {
   types_json=$(xcrun simctl list devicetypes --json) || die "cannot list simulator device types"
   runtimes_json=$(xcrun simctl list runtimes --json) || die "cannot list simulator runtimes"
   config=$(jq -ner --argjson types "$types_json" --argjson runtimes "$runtimes_json" \
-    --arg type_request "$DEVICE_TYPE_REQUEST" --arg runtime_request "$RUNTIME_REQUEST" '
+    --arg type_request "$DEVICE_TYPE_REQUEST" --arg runtime_request "$RUNTIME_REQUEST" \
+    --arg device "$DEVICE" '
       [$runtimes.runtimes[] as $runtime |
         select($runtime.isAvailable == true and $runtime.platform == "iOS") |
         select($runtime_request == "" or $runtime.name == $runtime_request or
           $runtime.version == $runtime_request or $runtime.identifier == $runtime_request) |
-        select($runtime_request != "" or
-          ($runtime.identifier | test("SimRuntime[.]iOS-[0-9-]+$"))) |
+        select($runtime_request != "" or ($runtime.identifier | test(
+          if $device == "duo" then "SimRuntime[.]iOS-[0-9-]+(-iPhone[0-9]+-[0-9]+)?$"
+          else "SimRuntime[.]iOS-[0-9-]+$" end))) |
         $types.devicetypes[] as $type |
         select(any($runtime.supportedDeviceTypes[]?; .identifier == $type.identifier)) |
         select($type_request == "" or $type.name == $type_request or $type.identifier == $type_request) |
@@ -134,17 +170,23 @@ resolve_config() {
 }
 
 pool_name() {
-  printf '%siphone-%s' "$PREFIX" "$1"
+  printf '%s%s-%s' "$PREFIX" "$MEMBER_STEM" "$1"
 }
 
 # A prefix alone is not ownership: pool- must not match pool-ipad- or a user's
 # unrelated pool-notes simulator. Only exact fixed member names are managed.
+# Members of every device kind under this prefix count, so an orphaned Duo is
+# recovered by an iPhone run and vice versa.
 is_pool_member_name() {
-  local name=$1 index
-  [[ $name == "${PREFIX}iphone-"* ]] || return 1
-  index=${name#"${PREFIX}iphone-"}
-  [[ $index =~ ^[1-9][0-9]*$ ]] || return 1
-  ((index <= POOL_SIZE))
+  local name=$1 stem size index
+  for stem in iphone duo; do
+    [[ $name == "${PREFIX}${stem}-"* ]] || continue
+    index=${name#"${PREFIX}${stem}-"}
+    [[ $index =~ ^[1-9][0-9]*$ ]] || continue
+    if [[ $stem == iphone ]]; then size=$IPHONE_POOL_SIZE; else size=$DUO_POOL_SIZE; fi
+    ((index <= size)) && return 0
+  done
+  return 1
 }
 
 lease_file() {
@@ -532,7 +574,7 @@ cmd_status() {
   local i name device udid pid state lease json active_json booted active
   validate_settings
   resolve_config
-  printf 'Pool: prefix=%s size=%s device-type=%s runtime=%s\n' "$PREFIX" "$POOL_SIZE" "$DEVICE_TYPE" "$RUNTIME"
+  printf 'Pool: prefix=%s device=%s size=%s device-type=%s runtime=%s\n' "$PREFIX" "$DEVICE" "$POOL_SIZE" "$DEVICE_TYPE" "$RUNTIME"
   for ((i = 1; i <= POOL_SIZE; i++)); do
     name=$(pool_name "$i")
     device=$(find_pool_device "$name")
@@ -594,9 +636,15 @@ shift
 
 while (($#)); do
   case $1 in
+    --device)
+      (($# >= 2)) || die "--device needs a value (iphone or duo)"
+      DEVICE=$2
+      shift 2
+      ;;
     --device-type)
       (($# >= 2)) || die "--device-type needs a value"
       DEVICE_TYPE_REQUEST=$2
+      DEVICE_TYPE_FLAG=$2
       shift 2
       ;;
     --runtime)
@@ -606,7 +654,7 @@ while (($#)); do
       ;;
     --pool-size)
       (($# >= 2)) || die "--pool-size needs a value"
-      POOL_SIZE=$2
+      POOL_SIZE_FLAG=$2
       shift 2
       ;;
     --max-booted)
@@ -630,6 +678,8 @@ while (($#)); do
       ;;
   esac
 done
+
+select_device
 
 case $COMMAND in
   init)
