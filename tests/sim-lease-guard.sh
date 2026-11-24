@@ -25,8 +25,10 @@ IPHONE_2=22222222-2222-4222-8222-222222222222
 OTHER=33333333-3333-4333-8333-333333333333
 TMP=$(mktemp -d)
 LEASE_PID=
+HOLDER=
 cleanup() {
   touch "$TMP/go" 2>/dev/null || true
+  [[ -z $HOLDER ]] || kill "$HOLDER" 2>/dev/null || true
   if [[ -n $LEASE_PID ]]; then
     kill "$LEASE_PID" 2>/dev/null || true
     wait "$LEASE_PID" 2>/dev/null || true
@@ -271,6 +273,42 @@ outside xcrun simctl listapps "$IPHONE_2"
 [[ $RC -eq 0 ]] || fail "an unleased sim was refused: $OUT"
 [[ ! -s $FAKE/violations ]] || fail "a protected UDID was touched: $(cat "$FAKE/violations")"
 
+# fake_lease UDID JSON-FIELDS: a live lease record for UDID, held by a sleeper,
+# with the given fields (a record made by an older sim-lease has no token).
+fake_lease() {
+  sleep 60 &
+  HOLDER=$!
+  jq -n --arg udid "$1" --argjson pid "$HOLDER" "{udid: \$udid, pid: \$pid} + $2" \
+    >"$TMP/state/pool-test-/leases/$1"
+}
+drop_fake_lease() {
+  rm -f "$TMP/state/pool-test-/leases/$1"
+  kill "$HOLDER" 2>/dev/null || true
+  wait "$HOLDER" 2>/dev/null || true
+  HOLDER=
+}
+
+# 4a. A record with empty fields keeps the others in place (no "since unknown").
+fake_lease "$IPHONE_2" '{name: "", state: "running", token: "feedfacefeedfacefeedfacefeedface", started: "2026-01-01T00:00:00Z"}'
+outside xcrun simctl listapps "$IPHONE_2"
+expect_refused 'a lease record with an empty name'
+grep -q "PID $HOLDER since 2026-01-01T00:00:00Z," <<<"$OUT" || fail "fields of a lease record were misread: $OUT"
+# 4b. Every device of `pair`, and --udid= values, are checked.
+outside xcrun simctl pair "$OTHER" "$IPHONE_2"
+expect_refused 'the second device of pair'
+outside xcrun simctl io --udid="$IPHONE_2" screenshot /dev/null
+expect_refused 'a --udid= value'
+drop_fake_lease "$IPHONE_2"
+
+# 4c. A lease made by a sim-lease without the guard has no token. Its holder
+#     (and its cleanup) cannot show one, so the guard lets calls on it through.
+fake_lease "$IPHONE_2" '{name: "pool-test-iphone-2", state: "running", started: "2026-01-01T00:00:00Z"}'
+outside xcrun simctl listapps "$IPHONE_2"
+[[ $RC -eq 0 ]] || fail "a lease without a token blocked its own holder: $OUT"
+outside simctl keychain pool-test-iphone-2 reset
+[[ $RC -eq 0 ]] || fail "a lease without a token blocked its own holder: $OUT"
+drop_fake_lease "$IPHONE_2"
+
 # 5. The lease releases cleanly through the guard (its own cleanup is not
 #    refused), and reports how many outside calls on its sim were refused.
 touch "$TMP/go"
@@ -282,9 +320,14 @@ grep -q 'refused 8 simctl calls on this sim from outside the lease' "$TMP/lease.
   fail "release did not report the refused calls: $(cat "$TMP/lease.out")"
 [[ -z $(ls -A "$TMP/state/pool-test-/leases") ]] || fail "lease records left"
 
-# 6. With no live lease, `booted` passes through again (non-pool use).
+# 6. With no live lease, `booted` passes through again (non-pool use); a live
+#    lease without a token still makes it ambiguous.
 outside xcrun simctl io booted screenshot /dev/null
 [[ $RC -eq 0 ]] || fail "booted was refused with no live lease: $OUT"
+fake_lease "$IPHONE_2" '{name: "pool-test-iphone-2", state: "running"}'
+outside xcrun simctl io booted screenshot /dev/null
+expect_refused 'booted while a lease without a token is live'
+drop_fake_lease "$IPHONE_2"
 [[ ! -s $FAKE/violations ]] || fail "a protected UDID was touched: $(cat "$FAKE/violations")"
 
 echo 'guard test: PASS'

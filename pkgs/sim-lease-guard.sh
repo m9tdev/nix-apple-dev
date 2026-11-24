@@ -59,8 +59,9 @@ load_leases() {
   local file udid name pid token started
   for file in "$GUARD_STATE_DIR"/*/leases/*; do
     [[ -f $file && $file != *.tmp.* ]] || continue
-    IFS=$'\t' read -r udid name pid token started < <(
-      "$JQ" -r '[.udid, .name, (.pid | tostring), (.token // ""), (.started // "")] | @tsv' \
+    # A non-whitespace separator: read keeps empty fields in place.
+    IFS=$'\x1f' read -r udid name pid token started < <(
+      "$JQ" -r '[.udid, .name, .pid, .token, .started] | map(. // "" | tostring) | join("\u001f")' \
         "$file" 2>/dev/null
     ) || continue
     [[ $pid =~ ^[1-9][0-9]*$ ]] || continue
@@ -117,9 +118,13 @@ check_simctl() {
     '' | list | help | create | runtime) return 0 ;;
     # These take several devices; every other subcommand takes one device
     # first, and later arguments belong to it (an app, a program, a setting).
-    boot | shutdown | erase | delete | pbsync) all_targets=1 ;;
+    boot | shutdown | erase | delete | pbsync | pair) all_targets=1 ;;
   esac
   for arg in "${args[@]:i}"; do
+    if [[ $arg == --udid=* ]]; then
+      targets+=("${arg#--udid=}")
+      continue
+    fi
     [[ $arg == -* ]] && continue
     targets+=("$arg")
     ((all_targets)) || break
@@ -132,6 +137,9 @@ check_simctl() {
       booted | all) refuse_ambiguous "$subcommand" "$arg" ;;
     esac
     for index in "${!LEASE_UDIDS[@]}"; do
+      # A lease made by a sim-lease without the guard has no token: its holder
+      # cannot be told apart from anyone else, so it is not guarded.
+      [[ -n ${LEASE_TOKENS[index]} ]] || continue
       if [[ ${arg^^} == "${LEASE_UDIDS[index]^^}" || $arg == "${LEASE_NAMES[index]}" ]]; then
         if [[ -z ${SIM_LEASE_TOKEN:-} || ${SIM_LEASE_TOKEN} != "${LEASE_TOKENS[index]}" ]]; then
           refuse_target "$index" "$subcommand" "$arg"
