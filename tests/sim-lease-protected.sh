@@ -51,7 +51,7 @@ init_rc=$?
 set -e
 [[ $init_rc -ne 0 ]]
 grep -q 'is protected (known non-pool); refusing every simulator operation' <<<"$init_output"
-if grep -Eq 'simctl (create|boot|shutdown|uninstall|keychain|erase|delete|launchctl)' "$XCRUN_TRACE"; then
+if grep -Eq 'simctl (create|boot|shutdown|uninstall|keychain|ui|erase|delete|launchctl)' "$XCRUN_TRACE"; then
   echo 'protected UDID reached a simulator mutation' >&2
   exit 1
 fi

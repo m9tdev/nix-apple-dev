@@ -99,7 +99,7 @@ expect_fail() {
 }
 
 assert_no_mutation() {
-  if grep -Eq 'simctl (create|boot|shutdown|uninstall|keychain|erase|delete|launchctl)' "$XCRUN_TRACE"; then
+  if grep -Eq 'simctl (create|boot|shutdown|uninstall|keychain|ui|erase|delete|launchctl)' "$XCRUN_TRACE"; then
     fail "a simulator mutation was attempted: $(cat "$XCRUN_TRACE")"
   fi
 }

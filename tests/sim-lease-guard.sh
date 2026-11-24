@@ -126,7 +126,7 @@ case $2 in
     grep -vxF -- "$4" "$FAKE/apps/$udid" >"$FAKE/apps/$udid.tmp" || true
     mv "$FAKE/apps/$udid.tmp" "$FAKE/apps/$udid"
     ;;
-  keychain | io | launch | openurl | terminate | spawn) ;;
+  keychain | io | launch | openurl | terminate | spawn | ui) ;;
   *)
     echo "unexpected xcrun $*" >&2
     exit 99
@@ -242,6 +242,17 @@ outside xcrun -r simctl shutdown "$IPHONE_1"
 expect_refused 'xcrun -r simctl'
 outside xcrun simctl install pool-test-iphone-1 /tmp/Other.app
 expect_refused 'the pool sim by name'
+# A script that saved the UDID and drives the sim later: deep links and
+# appearance changes are refused like any other call.
+outside sh -c 'xcrun simctl openurl "$(cat "$1")" myapp://perf-monitor' sh "$TMP/stale-udid"
+expect_refused 'xcrun simctl openurl on a stale UDID'
+[[ $RC -eq 77 ]] || fail "openurl from outside the lease exited $RC, not 77"
+outside sh -c 'xcrun simctl ui "$(cat "$1")" appearance dark' sh "$TMP/stale-udid"
+expect_refused 'xcrun simctl ui appearance on a stale UDID'
+[[ $RC -eq 77 ]] || fail "ui appearance from outside the lease exited $RC, not 77"
+outside simctl ui "$IPHONE_1" appearance dark
+expect_refused 'simctl ui appearance through the simctl shim'
+[[ $RC -eq 77 ]] || fail "ui appearance through the simctl shim exited $RC, not 77"
 # A token from an earlier lease does not open a later one.
 outside env SIM_LEASE_TOKEN=0123456789abcdef0123456789abcdef xcrun simctl install "$IPHONE_1" /tmp/Other.app
 expect_refused 'a stale lease token'
@@ -316,7 +327,7 @@ wait "$LEASE_PID" || fail "the lease failed: $(cat "$TMP/lease.out")"
 LEASE_PID=
 [[ $(state_of "$IPHONE_1") == Shutdown ]] || fail "the lease left its sim $(state_of "$IPHONE_1")"
 grep -q "^simctl uninstall $IPHONE_1 Holder" "$XCRUN_TRACE" || fail "release did not wipe the holder's app"
-grep -q 'refused 8 simctl calls on this sim from outside the lease' "$TMP/lease.out" ||
+grep -q 'refused 11 simctl calls on this sim from outside the lease' "$TMP/lease.out" ||
   fail "release did not report the refused calls: $(cat "$TMP/lease.out")"
 [[ -z $(ls -A "$TMP/state/pool-test-/leases") ]] || fail "lease records left"
 

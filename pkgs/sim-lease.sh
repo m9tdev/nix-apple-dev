@@ -282,6 +282,8 @@ clean_contents() {
   assert_unprotected_udid "$udid"
   remove_user_apps "$udid" || rc=1
   xcrun simctl keychain "$udid" reset || rc=1
+  # A lease may switch to dark mode; the next one starts in light mode.
+  xcrun simctl ui "$udid" appearance light || rc=1
   if ! "$SIMSLIM" verify "$udid"; then
     log "warning: simslim verification failed for $udid; run init again before reuse"
     rc=1

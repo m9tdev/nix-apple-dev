@@ -25,7 +25,7 @@ cleanup() {
   rm -rf "$TMP"
 }
 trap cleanup EXIT
-mkdir -p "$TMP/bin" "$TMP/state" "$TMP/fake/apps" "$TMP/fake/slim"
+mkdir -p "$TMP/bin" "$TMP/state" "$TMP/fake/apps" "$TMP/fake/slim" "$TMP/fake/appearance"
 export SIM_LEASE_PREFIX=pool-test-
 export SIM_LEASE_STATE_DIR=$TMP/state
 export SIM_LEASE_POLL_INTERVAL=0.2
@@ -124,6 +124,15 @@ case $2 in
   keychain)
     need_state "$udid" Booted 'reset the keychain of'
     ;;
+  ui)
+    need_state "$udid" Booted 'change the UI of'
+    [[ $4 == appearance ]] || { echo "unexpected xcrun $*" >&2; exit 99; }
+    if [[ -n ${5:-} ]]; then
+      echo "$5" >"$FAKE/appearance/$udid"
+    else
+      cat "$FAKE/appearance/$udid" 2>/dev/null || echo light
+    fi
+    ;;
   *)
     echo "unexpected xcrun $*" >&2
     exit 99
@@ -197,6 +206,7 @@ devices() {
   echo 1 >"$FAKE/slim/$IPHONE_2"
   : >"$FAKE/apps/$IPHONE_1"
   : >"$FAKE/apps/$IPHONE_2"
+  rm -f "$FAKE/appearance/"*
   rm -rf "$TMP/state"
   : >"$XCRUN_TRACE"
 }
@@ -243,7 +253,7 @@ release_holders() {
 }
 
 mutations_of() {
-  grep -E "^(simctl (boot|shutdown|uninstall|keychain|erase|delete)|simslim (on|off)) .*$1" "$XCRUN_TRACE" || true
+  grep -E "^(simctl (boot|shutdown|uninstall|keychain|ui|erase|delete)|simslim (on|off)) .*$1" "$XCRUN_TRACE" || true
 }
 
 assert_no_violation() {
@@ -389,6 +399,23 @@ for udid in "$GBO" "$DUO_BASE" "${GBO,,}"; do
     fi
   done
 done
+assert_no_violation
+
+# 8. A lease that switches its sim to dark mode does not hand dark mode to the
+#    next lease: cleanup puts the appearance back to light.
+devices Shutdown Shutdown
+output=$("$SIM_LEASE" run -- sh -c '
+  xcrun simctl ui "$SIM_UDID" appearance dark
+  echo "leased=$SIM_UDID appearance=$(xcrun simctl ui "$SIM_UDID" appearance)"' 2>&1) ||
+  fail "the dark-mode lease failed: $output"
+grep -q "^leased=$IPHONE_1 appearance=dark\$" <<<"$output" || fail "setup: the lease did not go dark: $output"
+output=$("$SIM_LEASE" run -- sh -c '
+  echo "leased=$SIM_UDID appearance=$(xcrun simctl ui "$SIM_UDID" appearance)"' 2>&1) ||
+  fail "the lease after a dark-mode lease failed: $output"
+grep -q "^leased=$IPHONE_1 " <<<"$output" || fail "setup: the next lease took another sim: $output"
+grep -q "^leased=$IPHONE_1 appearance=light\$" <<<"$output" ||
+  fail "the next lease inherited the previous lease's appearance: $output"
+[[ $(cat "$FAKE/appearance/$IPHONE_1") == light ]] || fail "release left the sim in $(cat "$FAKE/appearance/$IPHONE_1") mode"
 assert_no_violation
 
 echo 'recovery test: PASS'

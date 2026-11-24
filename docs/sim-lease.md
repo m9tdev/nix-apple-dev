@@ -122,12 +122,18 @@ The command also runs with the guard shims first on `PATH`, so its own
 
 The command's exit status is preserved. Before the command starts, and again in
 an EXIT/HUP/INT/TERM trap afterwards, `sim-lease` uninstalls non-Apple user
-apps, resets the keychain, and verifies that the slim launchd overrides are
-still present. Afterwards it also shuts down the simulator and releases the
+apps, resets the keychain, resets the UI appearance to light (a lease that
+switches to dark mode does not hand it to the next one), and verifies that the
+slim launchd overrides are still present. Afterwards it also shuts down the simulator and releases the
 lease. Entry cleaning covers a stale simulator that somebody shut down after a
 holder crashed. Exit cleaning and shutdown happen even when the test fails.
 Cleanup does not use `simctl erase`, so it does not depend on erase preserving
 host-side launchd state.
+
+Scripts must drive a leased simulator from inside `sim-lease run` (or with that
+lease's `SIM_LEASE_TOKEN`), never with a UDID saved from an earlier lease: the
+guard refuses such calls (`simctl openurl`, `simctl ui … appearance`, and every
+other subcommand) with exit status 77.
 
 If the caller goes away mid-run, for example when an SSH session without a
 terminal drops and its output pipes close, the command typically dies of
@@ -317,7 +323,7 @@ simulator. Use the exact UDID rather than a destination name such as
 `sim-lease undo` resets one pool member so that the next `run` accepts it, for
 example a member left booted by a holder that died. It refuses a live lease,
 reclaims a stale one, applies and verifies `simslim` (as `init` does), uninstalls
-user apps, resets the keychain, and shuts the simulator down:
+user apps, resets the keychain and the appearance, and shuts the simulator down:
 
 ```sh
 sim-lease undo POOL_UDID
