@@ -63,6 +63,41 @@ names where `N` is within the configured pool size. In particular, the default
 `pool-` prefix does not claim `pool-ipad-…`, differently named simulators, or
 pool-looking numbers above the configured size.
 
+## Request an iPhone Duo
+
+The same prefix can also hold a separate iPhone Duo pool, one simulator named
+`pool-duo-1` by default. Select it with `--device duo` on every command; without
+the flag, every command keeps using the iPhone pool exactly as before.
+
+```sh
+# One-time setup of the Duo member (also counted against the boot cap).
+sim-lease init --device duo
+sim-lease status --device duo
+
+# Lease it for a test.
+sim-lease run --device duo -- sh -c \
+  'xcodebuild test -scheme MyApp -destination "platform=iOS Simulator,id=$SIM_UDID"'
+```
+
+`--device duo` always uses the `com.apple.CoreSimulator.SimDeviceType.iPhone-Duo`
+device type, so it cannot be combined with `--device-type`, and a host-wide
+`SIM_LEASE_DEVICE_TYPE` does not apply to it. iPhone Duo needs Apple's
+device-specific simulator runtime (for example
+`com.apple.CoreSimulator.SimRuntime.iOS-27-2-iPhone19-4`, listed as `iOS 27.2`
+by `xcrun simctl list runtimes`); `sim-lease` selects the newest installed
+runtime that supports the Duo. `--runtime` still narrows that choice.
+
+The Duo pool follows the same rules as the iPhone pool: it is slimmed by `init`,
+cleaned and shut down after each lease, and never created, erased, or deleted
+by `run`. The active-simulator cap is shared: with the default cap of two, any
+mix of iPhone and Duo leases (and other booted simulators) totals at most two,
+and further requests of either kind wait in the same queue. Orphaned members of
+either kind under the prefix are recovered by the next `run` of any kind.
+
+Do not boot a hand-made Duo simulator for tests; a manually created base Duo
+simulator is protected (below) and left alone. Size the Duo pool with
+`--pool-size` or `SIM_LEASE_DUO_POOL_SIZE` (default `1`).
+
 ## Run a test
 
 ```sh
@@ -95,7 +130,7 @@ ownership—not a possibly reused PID—decides whether recovery may mutate a si
 
 Before booting, `run` executes `xcrun simctl list devices booted --json`. It
 reports external booted simulators and orphaned pool members. It cleans and
-shuts down only orphaned exact members of the selected pool. **It never shuts
+shuts down only orphaned exact members (`iphone-N` or `duo-N`) of the prefix's pools. **It never shuts
 down, erases, uninstalls from, or deletes a non-pool simulator.** Other pool
 prefixes and even differently named `pool-…` devices are external too. The
 script has no simulator-delete command and never deletes a simulator or runtime.
@@ -108,6 +143,7 @@ is renamed to an exact pool member name. The built-in list contains:
 | Simulator | UDID |
 |---|---|
 | `GBO Wallet VM-test` | `EDD04C40-B5A6-4135-A2BB-19444D4E00B4` |
+| `iPhone Duo` (base sim, not a pool member) | `E1C0D127-94F5-4FF6-B9D8-400507B67947` |
 
 A protected UDID is never booted, shut down, wiped, erased, slimmed, or deleted.
 Booted/orphan reports label it `protected` rather than `external/orphan`.
@@ -133,10 +169,10 @@ enforce the cap consistently.
 ## Commands
 
 ```text
-sim-lease init [--device-type TYPE] [--runtime RUNTIME] [--pool-size N] [--max-booted N]
-sim-lease run [--device-type TYPE] [--runtime RUNTIME] -- COMMAND [ARG ...]
-sim-lease status [--device-type TYPE] [--runtime RUNTIME]
-sim-lease undo POOL_UDID
+sim-lease init [--device iphone|duo] [--device-type TYPE] [--runtime RUNTIME] [--pool-size N] [--max-booted N]
+sim-lease run [--device iphone|duo] [--device-type TYPE] [--runtime RUNTIME] -- COMMAND [ARG ...]
+sim-lease status [--device iphone|duo] [--device-type TYPE] [--runtime RUNTIME]
+sim-lease undo [--device iphone|duo] POOL_UDID
 sim-lease --help
 ```
 
@@ -153,11 +189,14 @@ sim-lease --help
 ## Environment and flags
 
 Flags override the corresponding environment variable for that invocation.
+`--device iphone|duo` (default `iphone`) selects the pool; `--pool-size` sizes
+the selected pool only.
 
 | Environment variable | Default | Meaning |
 |---|---|---|
 | `SIM_LEASE_PREFIX` | `pool-` | Owned pool-name prefix; must start with `pool-` |
-| `SIM_LEASE_POOL_SIZE` | `2` | Number of fixed pool members, named `iphone-1..N` under the prefix |
+| `SIM_LEASE_POOL_SIZE` | `2` | Number of fixed iPhone pool members, named `iphone-1..N` under the prefix |
+| `SIM_LEASE_DUO_POOL_SIZE` | `1` | Number of fixed iPhone Duo pool members, named `duo-1..N` under the prefix |
 | `SIM_LEASE_MAX_BOOTED` | `2` | Maximum active (`state != Shutdown`) simulators before a new pool boot; all sims count |
 | `SIM_LEASE_DEVICE_TYPE` | Highest-numbered base iPhone supported by the selected runtime | Device-type name or identifier; flag: `--device-type` |
 | `SIM_LEASE_RUNTIME` | Newest compatible general installed iOS runtime | Runtime name, version, or identifier; flag: `--runtime` |
@@ -216,6 +255,8 @@ sim-lease undo POOL_UDID
 # expected status output: 0/N managed launchd labels disabled (stock)
 ```
 
+For a Duo member, pass the device too: `sim-lease undo --device duo POOL_UDID`.
+
 `undo` calls the private `simslim off` implementation internally; do not try to
 undo slimming by erasing a simulator. `sim-lease status` lists the pool UDIDs.
 
@@ -234,6 +275,12 @@ xcrun simctl delete POOL_UDID
 ```
 
 Never delete protected or other projects' simulators or any installed runtime.
+
+To stop offering the Duo pool, undo `pool-duo-1` as above, delete only its UDID
+(from `sim-lease status --device duo`) if wanted, and stop passing
+`--device duo`. The iPhone pool is unaffected. To go back to a release without
+Duo support, also remove `pool-duo-1` first: older releases treat it as an
+external simulator and never clean it.
 Remove the public Nix command with:
 
 ```sh

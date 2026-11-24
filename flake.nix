@@ -207,6 +207,19 @@
               bash ${./tests/sim-lease-protected.sh} ${p.sim-lease}/bin/sim-lease
               touch $out
             '';
+            sim-lease-devices =
+              pkgs.runCommand "sim-lease-devices"
+                {
+                  nativeBuildInputs = [
+                    pkgs.coreutils
+                    pkgs.jq
+                    pkgs.util-linux
+                  ];
+                }
+                ''
+                  bash ${./tests/sim-lease-devices.sh} ${p.sim-lease}/bin/sim-lease
+                  touch $out
+                '';
           }
         else
           {
